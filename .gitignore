@@ -1,4 +1,7 @@
 data/*
+!data/README.md
+!data/download_data.py
+
 __pycache__/
 *.py[cod]
 .pytest_cache/
