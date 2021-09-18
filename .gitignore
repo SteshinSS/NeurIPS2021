@@ -1,0 +1,7 @@
+data/*
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints
+notebooks/*.ipynb_checkpoints
+.vscode
