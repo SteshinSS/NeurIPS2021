@@ -1,15 +1,16 @@
 functionality:
-  name: python_starter_kit
+  name: khrameeva_lab_submission
   namespace: predict_modality_starter_kits
   
   # metadata for your method
   version: dev
   description: A description for your method.
   authors:
-    - name: John Doe
-      email: johndoe@youremailprovider.com
+    - name: Simon Steshin
+      email: SteshinSimon@gmail.com
       roles: [ author, maintainer ]
-      props: { github: johndoe, orcid: "0000-1111-2222-3333" }
+      props: { github: SteshinSS, orcid: "0000-1111-2222-3333" }
+    - name: To Be Filled
       
   # parameters
   arguments:
@@ -37,14 +38,12 @@ functionality:
       description: Dataset with predicted values for modality2.
       required: true
     # additional parameters
-    - name: "--distance_method"
-      type: "string"
-      default: "minkowski"
-      description: The distance metric to use. Possible values include `euclidean` and `minkowski`.
-    - name: "--n_pcs"
-      type: "integer"
-      default: 50
-      description: Number of components to use for dimensionality reduction.
+    - name: "--config"
+      type: "file"
+      description: Configuration file.
+    - name: "--checkpoint"
+      type: "file"
+      description: Model's weights
       
   # files your script needs
   resources:
@@ -52,6 +51,10 @@ functionality:
       path: script.py
     - type: file
       path: ../../lab_scripts
+    - type: file
+      path: ../../configs
+    - type: file
+      path: ../../checkpoints
   
   # resources for unit testing your component
   tests:

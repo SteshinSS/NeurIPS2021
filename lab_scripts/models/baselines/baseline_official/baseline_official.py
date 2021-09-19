@@ -1,11 +1,11 @@
-"""Official baseline from here: https://github.com/openproblems-bio/neurips2021-notebooks/blob/main/notebooks/explore/explore_multiome.ipynb"""
+"""Official baseline from the starter pack"""
 
 from sklearn.decomposition import TruncatedSVD
 from sklearn.linear_model import LinearRegression
 import anndata as ad
 import scipy
 
-def fit_predict(input_train_mod1, input_train_mod2, input_test_mod1, binarize=False):
+def fit_predict(input_train_mod1, input_train_mod2, input_test_mod1):
     input_train = ad.concat(
         {"train": input_train_mod1, "test": input_test_mod1},
         axis=0,

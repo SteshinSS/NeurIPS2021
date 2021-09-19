@@ -11,6 +11,7 @@ pipelines/
 # ...but sync scripts
 !pipelines/README.md
 !pipelines/*/lab_scripts
+!pipelines/*/configs
 !pipelines/*/script.py
 !pipelines/*/config.vsh.yaml
 !pipelines/*/test.py
