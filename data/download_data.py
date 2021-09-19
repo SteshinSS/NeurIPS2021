@@ -1,3 +1,11 @@
+"""
+The script for downloading datasets. Need AWS CLI to work.
+Run it from the repo's root directory: 
+    python data/download_data.py
+
+At the moment it downloads every official dataset.
+"""
+
 import subprocess
 
 
@@ -6,11 +14,19 @@ def download_official():
 
     # Dict from s3 source path to target location
     source_to_target = {
-        # Predict Modality dataset
+        # Predict Modality
         's3://openproblems-bio/public/phase1-data/predict_modality/':
-            'data/official/predict_modality/',
-        
-        # Explore dataset
+            'data/official/predict_modality/',  
+        # Match Modality
+        's3://openproblems-bio/public/phase1-data/match_modality/':
+            'data/official/match_modality/',  
+        # Joint Embedding
+        's3://openproblems-bio/public/phase1-data/joint_embedding/':
+            'data/official/joint_embedding/',  
+        # Common
+        's3://openproblems-bio/public/phase1-data/common/':
+            'data/official/common/',  
+        # Explore
         's3://openproblems-bio/public/explore/':
             'data/official/explore/',
     }
