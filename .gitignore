@@ -6,12 +6,12 @@ data/*
 !data/download_data.py
 
 # do not sync pipeline output
-pipelines/
+pipelines/modality_prediction/*
 
 # ...but sync scripts
-!pipelines/README.md
 !pipelines/*/lab_scripts
 !pipelines/*/configs
+!pipelines/*/checkpoints
 !pipelines/*/script.py
 !pipelines/*/config.vsh.yaml
 !pipelines/*/test.py
