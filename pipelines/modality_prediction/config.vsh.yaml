@@ -50,6 +50,8 @@ functionality:
   resources:
     - type: python_script
       path: script.py
+    - type: file
+      path: ../../lab_scripts
   
   # resources for unit testing your component
   tests:

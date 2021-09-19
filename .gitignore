@@ -1,6 +1,25 @@
+# do not sync datasets
 data/*
+
+# ...but sync scripts
 !data/README.md
 !data/download_data.py
+
+# do not sync pipeline output
+pipelines/
+
+# ...but sync scripts
+!pipelines/README.md
+!pipelines/*/lab_scripts
+!pipelines/*/script.py
+!pipelines/*/config.vsh.yaml
+!pipelines/*/test.py
+!pipelines/*/README.md
+
+#...and basic stuff
+!pipelines/*/bin/*
+!pipelines/*/sample_data/*
+!pipelines/*/scripts/*
 
 __pycache__/
 *.py[cod]
@@ -8,3 +27,5 @@ __pycache__/
 .ipynb_checkpoints
 notebooks/*.ipynb_checkpoints
 .vscode
+.mypy_cache
+
