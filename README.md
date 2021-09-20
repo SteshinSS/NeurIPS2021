@@ -115,6 +115,7 @@ mypy  # linter
 flake8  # linter
 yapf  # formatter
 autopep8  # formatter
+black  # formatter
 
 # For their baseline
 anndata 

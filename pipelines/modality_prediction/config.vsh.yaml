@@ -37,14 +37,7 @@ functionality:
       example: "output.h5ad"
       description: Dataset with predicted values for modality2.
       required: true
-    # additional parameters
-    - name: "--config"
-      type: "file"
-      description: Configuration file.
-    - name: "--checkpoint"
-      type: "file"
-      description: Model's weights
-      
+
   # files your script needs
   resources:
     - type: python_script
