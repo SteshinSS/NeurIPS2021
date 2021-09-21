@@ -1,3 +1,3 @@
 alpha: 1.0
 l1_ratio: 0.5
-data: data/official/predict_modality/openproblems_bmmc_multiome_phase1_mod2
+data: pm/official/gex_to_adt

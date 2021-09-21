@@ -10,6 +10,7 @@ import yaml  # type: ignore
 
 sys.path.append(str(Path.cwd()))
 
+from lab_scripts.metrics.mp import mp_metrics
 from lab_scripts.data import dataloader
 from lab_scripts.models.baselines import linear_regression
 from lab_scripts.utils import utils
@@ -54,14 +55,14 @@ def train(
 ):
     files = dataloader.load_data(config["data"])
 
-    input_train_mod1 = files["input_train_mod1"]
-    mod1 = utils.get_mod(input_train_mod1)
-    input_train_mod2 = files["input_train_mod2"]
-    mod2 = utils.get_mod(input_train_mod2)
+    train_mod1 = files["train_mod1"]
+    mod1 = utils.get_mod(train_mod1)
+    train_mod2 = files["train_mod2"]
+    mod2 = utils.get_mod(train_mod2)
     task_type = utils.get_task_type(mod1, mod2)
     log.info("Data is loaded")
 
-    regressor = linear_regression.train(input_train_mod1, input_train_mod2, config)
+    regressor = linear_regression.train(train_mod1, train_mod2, config)
 
     checkpoint_path = config.get(
         "checkpoint_path", default_checkpoint_path + task_type + ".ckpt"
@@ -73,13 +74,13 @@ def train(
 
 def evaluate(config: dict):
     files = dataloader.load_data(config["data"])
-    input_train_mod1 = files['input_train_mod1']
-    input_train_mod2 = files['input_train_mod2']
-    input_test_mod1 = files['input_test_mod1']
-    true_mod2 = files['input_test_mod2']
+    train_mod1 = files['train_mod1']
+    train_mod2 = files['train_mod2']
+    test_mod1 = files['test_mod1']
+    true_mod2 = files['test_mod2']
 
-    mod1 = utils.get_mod(input_train_mod1)
-    mod2 = utils.get_mod(input_train_mod2)
+    mod1 = utils.get_mod(train_mod1)
+    mod2 = utils.get_mod(train_mod2)
     task_type = utils.get_task_type(mod1, mod2)
     log.info('Data is loaded')
 
@@ -88,19 +89,20 @@ def evaluate(config: dict):
         regressor = pickle.load(f)
         log.info(f'Model is loaded from checkpoint {checkpoint_path}')
     
-    predictions = linear_regression.predict(input_train_mod1, input_train_mod2, input_test_mod1)
+    predictions = linear_regression.predict(train_mod1, train_mod2, test_mod1, regressor)
+    print(mp_metrics.calculate_target(predictions, true_mod2))
 
 
 
 def predict(config: dict):
     files = dataloader.load_data(config["data"])
-    input_train_mod1 = files['input_train_mod1']
-    input_train_mod2 = files['input_train_mod2']
-    input_test_mod1 = files['input_test_mod1']
-    true_mod2 = files['input_test_mod2']
+    train_mod1 = files['train_mod1']
+    train_mod2 = files['train_mod2']
+    test_mod1 = files['test_mod1']
+    true_mod2 = files['test_mod2']
 
-    mod1 = utils.get_mod(input_train_mod1)
-    mod2 = utils.get_mod(input_train_mod2)
+    mod1 = utils.get_mod(train_mod1)
+    mod2 = utils.get_mod(train_mod2)
     task_type = utils.get_task_type(mod1, mod2)
     log.info('Data is loaded')
 
@@ -109,8 +111,10 @@ def predict(config: dict):
         regressor = pickle.load(f)
         log.info(f'Model is loaded from checkpoint {checkpoint_path}')
     
-    predictions = linear_regression.predict(input_train_mod1, input_train_mod2, input_test_mod1)
-    log.info('Predictions are made.')
+    predictions = linear_regression.predict(train_mod1, train_mod2, test_mod1, regressor)
+    prediction_path = 'linear_regression_output_' + task_type + '.h5ad'
+    predictions.write(prediction_path)
+    log.info(f'Predictions are saved to {prediction_path}')
     return predictions
 
 
