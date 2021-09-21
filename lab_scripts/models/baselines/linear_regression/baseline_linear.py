@@ -1,41 +1,50 @@
 import logging
-import pickle
-from typing import Dict
 
 import anndata as ad
 import numpy as np
 from lab_scripts.utils import utils
+from sklearn.decomposition import TruncatedSVD
 from sklearn.linear_model import ElasticNet
 
-log = logging.getLogger('linear_regression')
+log = logging.getLogger("linear_regression")
 
 
-def train(train_mod1: ad.AnnData, train_mod2: ad.AnnData, config: dict):
-    train_mod1 = utils.convert_to_dense(train_mod1)
-    train_mod2 = utils.convert_to_dense(train_mod2)
-    regressor = ElasticNet(
-        selection='random',
-        alpha=config['alpha'],
-        l1_ratio=config['l1_ratio']
-    )
-    log.info('Fitting...')
-    regressor.fit(train_mod1.X, train_mod2.X)
-    return regressor
+def apply_svd(dataset: ad.AnnData, svd):
+    """Returns np.ndarray matrix out of AnnData dataset."""
+    mod = utils.get_mod(dataset)
+    log.info(f"Reducing dimension for mod {mod} into {svd.n_components} dimensions...")
+    X = svd.transform(dataset.X)
+    return X
+
+
+def invert_svd(X: np.ndarray, svd):
+    return svd.inverse_transform(X)
 
 
 def predict(
-    train_mod1: ad.AnnData,
-    train_mod2: ad.AnnData,
-    test_mod1: ad.AnnData,
+    test_mod1: np.ndarray,
     regressor,
-) -> ad.AnnData:
-    test_mod1 = utils.convert_to_dense(test_mod1)
-    predictions = regressor.predict(test_mod1.X)
+):
+    log.info("Predicting...")
+    predictions = regressor.predict(test_mod1)
+    return predictions
 
-    result = ad.AnnData(
-        X=predictions,
-        obs=test_mod1.obs,
-        var=train_mod2.var,
-        uns={"dataset_id": train_mod1.uns["dataset_id"]},
+
+def train_svd(train_matrix, n_components):
+    svd = TruncatedSVD(n_components, algorithm="arpack")
+    svd.fit(train_matrix)
+    return svd
+
+
+def train_regressor(
+    train_mod1,
+    train_mod2,
+    config: dict,
+):
+    regressor = ElasticNet(
+        selection="random", alpha=config["alpha"], l1_ratio=config["l1_ratio"]
     )
-    return result
+    log.info("Fitting...")
+    regressor.fit(train_mod1, train_mod2)
+
+    return regressor

@@ -78,9 +78,10 @@ platforms:
           - scikit-learn
           - anndata
           - scanpy
+          - pyyaml
 
   # By specifying a 'nextflow', viash will also build a viash module
   # which uses the docker container built above to also be able to 
   # run your method as part of a nextflow pipeline.
   - type: nextflow
-    labels: [ lowmem, lowtime, lowcpu ]
+    labels: [ midmem, hightime, highcpu ]
