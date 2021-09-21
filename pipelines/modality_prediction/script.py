@@ -13,6 +13,7 @@ meta = {
 
 # add imported modules in vias
 import sys
+
 sys.path.append(meta["resources_dir"])
 
 # import as usual
@@ -23,14 +24,17 @@ from lab_scripts.mains import baseline_linear
 logging.basicConfig(level=logging.INFO)
 print(meta["resources_dir"])
 import os
+
 print(os.getcwd())
 
 input_train_mod1 = ad.read_h5ad(par["input_train_mod1"])
 input_train_mod2 = ad.read_h5ad(par["input_train_mod2"])
 input_test_mod1 = ad.read_h5ad(par["input_test_mod1"])
 
-resources_dir = meta["resources_dir"] + '/'
-adata = baseline_linear.predict_submission(input_train_mod1, input_train_mod2, input_test_mod1, resources_dir)
+resources_dir = meta["resources_dir"] + "/"
+adata = baseline_linear.predict_submission(
+    input_train_mod1, input_train_mod2, input_test_mod1, resources_dir
+)
 
 adata.uns["method_id"] = "khrameeva_lab_submission"
 adata.write_h5ad(par["output"], compression="gzip")

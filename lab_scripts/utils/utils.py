@@ -1,6 +1,7 @@
 import anndata as ad
 from scipy.sparse.csc import csc_matrix
 
+
 def get_mod(dataset: ad.AnnData) -> str:
     """Returns type of dataset 'adt', 'gex' or 'atac'."""
     feature_types = dataset.var["feature_types"]
@@ -14,12 +15,14 @@ def get_task_type(
 ) -> str:
     task_type = mod1 + "_to_" + mod2
 
-    allowed_types = set([
-        "gex_to_atac",
-        "atac_to_gex",
-        "gex_to_adt",
-        "adt_to_gex",
-    ])
+    allowed_types = set(
+        [
+            "gex_to_atac",
+            "atac_to_gex",
+            "gex_to_adt",
+            "adt_to_gex",
+        ]
+    )
     if task_type not in allowed_types:
         raise ValueError(f"Inappropriate type of input datasets: {mod1, mod2}")
     return task_type

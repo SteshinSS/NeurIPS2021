@@ -6,6 +6,7 @@ from lab_scripts.utils import utils
 
 input_type = Union[np.ndarray, ad.AnnData]
 
+
 def calculate_target(y_pred: input_type, y: input_type):
     if isinstance(y_pred, ad.AnnData):
         y_pred = utils.convert_to_dense(y_pred).X
