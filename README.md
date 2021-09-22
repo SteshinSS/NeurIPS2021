@@ -116,6 +116,7 @@ flake8  # linter
 yapf  # formatter
 autopep8  # formatter
 black  # formatter
+pre-commit
 
 # For their baseline
 anndata 
