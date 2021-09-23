@@ -3,7 +3,7 @@
 set -e
 
 # change these parameters if need be
-PIPELINE_VERSION="1.0.2"
+PIPELINE_VERSION="1.1.0"
 
 # get_script_dir: return the path of a bash file, following symlinks
 function get_script_dir {

@@ -3,7 +3,7 @@
 set -e
 
 # change these parameters if need be
-PIPELINE_VERSION="1.0.2"
+PIPELINE_VERSION="1.1.0"
 
 # helper functions
 
@@ -55,24 +55,33 @@ echo "######################################################################"
 echo "##                      Sync datasets from S3                       ##"
 echo "######################################################################"
 
-if [ ! -d output/datasets/predict_modality/ ]; then
-  mkdir -p output/datasets/predict_modality/
+# don't sync data when testing the development starter kits
+if [[ $PIPELINE_VERSION != "main_build" ]]; then
+  VERSION_FILE="output/datasets/predict_modality/VERSION"
 
-  # use aws cli if installed
-  if command -v aws &> /dev/null; then
-    aws s3 sync --no-sign-request \
-      s3://openproblems-bio/public/phase1-data/predict_modality/ \
-      output/datasets/predict_modality/
-  # else use aws docker container instead
-  else
-    docker run \
-      --user $(id -u):$(id -g) \
-      --rm -it \
-      -v $(pwd)/output:/output \
-      amazon/aws-cli \
-      s3 sync --no-sign-request \
-      s3://openproblems-bio/public/phase1-data/predict_modality/ \
-      /output/datasets/predict_modality/
+  # if the data is not found or is from a previous version starter kit,
+  # sync from aws to local
+  if [[ ! -f $VERSION_FILE || `cat $VERSION_FILE` != $PIPELINE_VERSION ]]; then
+    mkdir -p output/datasets/predict_modality/
+
+    # use aws cli if installed
+    if command -v aws &> /dev/null; then
+      aws s3 sync --no-sign-request \
+        s3://openproblems-bio/public/phase1-data/predict_modality/ \
+        output/datasets/predict_modality/
+    # else use aws docker container instead
+    else
+      docker run \
+        --user $(id -u):$(id -g) \
+        --rm -it \
+        -v $(pwd)/output:/output \
+        amazon/aws-cli \
+        s3 sync --no-sign-request \
+        s3://openproblems-bio/public/phase1-data/predict_modality/ \
+        /output/datasets/predict_modality/
+    fi
+
+    echo "$PIPELINE_VERSION" > $VERSION_FILE
   fi
 fi
 
