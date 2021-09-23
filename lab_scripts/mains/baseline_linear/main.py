@@ -6,6 +6,7 @@ import logging
 import pickle
 import sys
 from pathlib import Path
+from scipy.sparse import csr_matrix
 
 import anndata as ad
 import yaml  # type: ignore
@@ -86,6 +87,8 @@ def predict_submission(
     if "reduce_dim" in mod2_config:
         svd_mod2 = get_svd(mod2_config, mod2, resources_dir)
         predictions = linear_regression.invert_svd(predictions, svd_mod2)
+
+    predictions = csr_matrix(predictions)
 
     result = ad.AnnData(
         X=predictions,
