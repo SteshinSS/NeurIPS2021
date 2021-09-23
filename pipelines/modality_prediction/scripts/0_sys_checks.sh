@@ -38,7 +38,7 @@ elif [ $PIPELINE_VERSION != $LATEST_RELEASE ]; then
   echo "Warning: A newer version of this starter kit is available! Updating to"
   echo "the latest version is strongly recommended. See README.md for more info."
   echo "Continuing in 10 seconds."
-  sleep 10
+  sleep 1
 fi
 
 # check docker availability
