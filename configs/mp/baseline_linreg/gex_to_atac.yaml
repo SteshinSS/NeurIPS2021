@@ -12,3 +12,4 @@ mod1:
 mod2:
   reduce_dim:
     n_components: 200
+    checkpoint_path: checkpoints/mp/baseline_linreg/svd_atac_200_from_gex.ckpt
