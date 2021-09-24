@@ -1,6 +1,12 @@
-import pathlib
-import anndata as ad
+"""Module for opening dataset.
 
+Imagine you have the official dataset, some processed public_1 dataset, and some public_2 
+dataset. You want to use first two for training. Instead of opening them manually add
+them into this module, so you need only to call dataloader.load_data('my_dataset').
+"""
+
+
+import anndata as ad
 
 library = {
     "pm/official/adt_to_gex": {
@@ -31,6 +37,15 @@ library = {
 
 
 def load_data(name):
+    """Opens dataset by name.
+
+    Current datasets:
+        Official:
+            'pm/official/gex_to_adt'
+            'pm/official/adt_to_gex'
+            'pm/official/atac_to_gex'
+            'pm/official/gex_to_atac'
+    """
     files = library[name]
     result = dict()
     for name, path in files.items():

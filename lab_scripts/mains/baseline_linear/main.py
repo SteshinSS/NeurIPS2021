@@ -47,7 +47,7 @@ def predict_submission(
     input_train_mod1: ad.AnnData,
     input_train_mod2: ad.AnnData,
     input_test_mod1: ad.AnnData,
-    resources_dir: str,
+    resources_dir: str = "",
 ) -> ad.AnnData:
     log.info("Start linear regression prediction...")
 
