@@ -57,6 +57,10 @@ class BaselineModel(pl.LightningModule):
         loss = F.mse_loss(adt_pred, adt)
         self.log("val_loss", loss, prog_bar=True)
 
+    def predict_step(self, batch, batch_idx):
+        gex, adt = batch
+        return self(gex)
+
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), self.lr)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(

@@ -82,7 +82,6 @@ def evaluate(config: dict):
     train_mod2 = files["train_mod2"]
     test_mod1 = files["test_mod1"]
     test_mod2 = files["test_mod2"]
-
     mod1 = utils.get_mod(train_mod1)
     mod2 = utils.get_mod(train_mod2)
     task_type = utils.get_task_type(mod1, mod2)
@@ -90,23 +89,50 @@ def evaluate(config: dict):
     log.info("Data is loaded")
 
     # Preprocess data
-    ...
+    train_mod1_X = utils.convert_to_dense(train_mod1).X
+    scaler_mod1 = StandardScaler()
+    train_mod1_X = scaler_mod1.fit_transform(train_mod1_X)
+
+    train_mod2_X = utils.convert_to_dense(train_mod2).X
+    scaler_mod2 = StandardScaler()
+    train_mod2_X = scaler_mod2.fit_transform(train_mod2_X)
+    train_dataset = neuralnet.BaselineDataloader(train_mod1_X, train_mod2_X)
+
+    train_dataloader = DataLoader(train_dataset, batch_size=128, shuffle=True)
+    test_mod1_X = utils.convert_to_dense(test_mod1).X
+    test_mod1_X = scaler_mod1.transform(test_mod1_X)
+    test_mod2_X = utils.convert_to_dense(test_mod2).X
+    test_mod2_X = scaler_mod2.transform(test_mod2_X)
+    test_dataset = neuralnet.BaselineDataloader(test_mod1_X, test_mod2_X)
+    test_dataloader = DataLoader(test_dataset, batch_size=128, shuffle=False)
     log.info("Data is preprocessed")
 
-    # Load model
-    # Example checkpoint path
+    # Set configs
+    config["input_features"] = train_mod1_X.shape[1]
+    config["output_features"] = train_mod2_X.shape[1]
+    use_gpu = torch.cuda.is_available()
+    if not use_gpu:
+        log.warning("GPU is not detected.")
+    use_gpu = int(use_gpu)  # type: ignore
     checkpoint_path = config.get(
         "checkpoint_path", base_checkpoint_path + task_type + ".ckpt"
     )
-    ...
-    log.info(f"Model is loaded from {checkpoint_path}")
 
-    train_predictions = None
-    # train_predictions = my_model.predict(...)
+    # Load model
+    model = neuralnet.BaselineModel.load_from_checkpoint(checkpoint_path, config=config)
+    log.info(f"Model is loaded from {checkpoint_path}")
+    model.eval()
+
+    trainer = pl.Trainer(gpus=use_gpu)
+
+    train_predictions = trainer.predict(model, train_dataloader)
+    train_predictions = torch.cat(train_predictions, dim=0).cpu().numpy()
+    train_predictions = scaler_mod2.inverse_transform(train_predictions)
     print(f"Train target metric: {mp.calculate_target(train_predictions, train_mod2)}")
 
-    test_predictions = None
-    # test_predictions = my_model.predict(...)
+    test_predictions = trainer.predict(model, test_dataloader)
+    test_predictions = torch.cat(test_predictions, dim=0).cpu().numpy()
+    test_predictions = scaler_mod2.inverse_transform(test_predictions)
     print(f"Test target metric: {mp.calculate_target(test_predictions, test_mod2)}")
 
 
