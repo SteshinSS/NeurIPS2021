@@ -3,7 +3,7 @@
 set -e
 
 # change these parameters if need be
-PIPELINE_VERSION="1.1.0"
+PIPELINE_VERSION="1.1.1"
 
 # get_script_dir: return the path of a bash file, following symlinks
 function get_script_dir {
@@ -38,7 +38,7 @@ elif [ $PIPELINE_VERSION != $LATEST_RELEASE ]; then
   echo "Warning: A newer version of this starter kit is available! Updating to"
   echo "the latest version is strongly recommended. See README.md for more info."
   echo "Continuing in 10 seconds."
-  sleep 1
+  sleep 10
 fi
 
 # check docker availability

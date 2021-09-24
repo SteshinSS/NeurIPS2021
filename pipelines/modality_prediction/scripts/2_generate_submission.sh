@@ -3,7 +3,7 @@
 set -e
 
 # change these parameters if need be
-PIPELINE_VERSION="1.1.0"
+PIPELINE_VERSION="1.1.1"
 
 # helper functions
 
