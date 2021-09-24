@@ -5,6 +5,9 @@ data/*
 !data/README.md
 !data/download_data.py
 
+# do not sync checkpoints
+checkpoints/**/*.ckpt
+
 # do not sync pipeline output
 pipelines/modality_prediction/*
 

@@ -6,6 +6,7 @@ Run it from the repo's root directory:
 At the moment it downloads every official dataset.
 """
 
+import argparse
 import subprocess
 
 
@@ -27,8 +28,33 @@ def download_official():
     }
 
     for source_path, target_path in source_to_target.items():
+        print(f"Download {source_path} to {target_path}...")
         command = r"aws s3 sync --no-sign-request " + source_path + " " + target_path
         subprocess.call(command, shell=True)
+        print()
 
 
-download_official()
+def download_all():
+    """Download all datasets from out aws s3"""
+    source_to_target = {"s3://nips2021/sample_data/": "data/raw/sample_data"}
+    for source_path, target_path in source_to_target.items():
+        print(f"Download {source_path} to {target_path}...")
+        command = r"aws s3 sync " + source_path + " " + target_path
+        subprocess.call(command, shell=True)
+        print()
+
+
+def get_parser():
+    parser = argparse.ArgumentParser(description="Dataset downloader")
+    parser.add_argument("--all", action="store_true", default=False)
+    parser.add_argument("--official", action="store_true", default=False)
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_parser()
+    args = parser.parse_args()
+    if args.all:
+        download_all()
+    if args.official:
+        download_official()
