@@ -1,9 +1,9 @@
 # VIASH START
 # This block will be replaced during viash building. Use it for debugging purposes.
 par = {
-    "input_train_mod1": "../../data/official/predict_modality/openproblems_bmmc_cite_phase1_mod2/openproblems_bmmc_cite_phase1_mod2.censor_dataset.output_train_mod1.h5ad",
-    "input_train_mod2": "../../data/official/predict_modality/openproblems_bmmc_cite_phase1_mod2/openproblems_bmmc_cite_phase1_mod2.censor_dataset.output_train_mod2.h5ad",
-    "input_test_mod1": "../../data/official/predict_modality/openproblems_bmmc_cite_phase1_mod2/openproblems_bmmc_cite_phase1_mod2.censor_dataset.output_test_mod1.h5ad",
+    "input_train_mod1": "../../data/official/predict_modality/openproblems_bmmc_cite_phase1_rna/openproblems_bmmc_cite_phase1_rna.censor_dataset.output_train_mod1.h5ad",
+    "input_train_mod2": "../../data/official/predict_modality/openproblems_bmmc_cite_phase1_rna/openproblems_bmmc_cite_phase1_rna.censor_dataset.output_train_mod2.h5ad",
+    "input_test_mod1": "../../data/official/predict_modality/openproblems_bmmc_cite_phase1_rna/openproblems_bmmc_cite_phase1_rna.censor_dataset.output_test_mod1.h5ad",
     "output": "output.h5ad",
 }
 meta = {
@@ -19,7 +19,7 @@ sys.path.append(meta["resources_dir"])
 # import as usual
 import logging
 import anndata as ad
-from lab_scripts.mains import baseline_linear
+from lab_scripts.mains import baseline_pytorch
 
 logging.basicConfig(level=logging.INFO)
 print(meta["resources_dir"])
@@ -32,7 +32,7 @@ resources_dir = meta["resources_dir"]
 if resources_dir:
     # It contains path to folder with resources. Let's add slash to concatenate it later.
     resources_dir += "/"
-adata = baseline_linear.predict_submission(
+adata = baseline_pytorch.predict_submission(
     input_train_mod1, input_train_mod2, input_test_mod1, resources_dir
 )
 

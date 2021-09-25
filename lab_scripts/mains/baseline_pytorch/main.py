@@ -12,7 +12,6 @@ import torch
 import yaml  # type: ignore
 from scipy.sparse import csr_matrix
 from sklearn.preprocessing import StandardScaler
-from torch.utils.data import DataLoader
 
 # Add lab_scripts folder to path. This line should be before imports
 sys.path.append(str(Path.cwd()))
@@ -47,7 +46,7 @@ def gex_to_adt(
         config = yaml.safe_load(f)
 
     # Preprocess data
-    scaler_mod1 = load_scaler(mod1, task_type, config)
+    scaler_mod1 = load_scaler(mod1, task_type, config, resources_dir)
     test_mod1_X, _ = neuralnet.preprocess_dataset(input_test_mod1, scaler_mod1)
 
     # Here is tricky code: the dataloader returns pair (gex, adt). Since we need only
@@ -67,6 +66,7 @@ def gex_to_adt(
     checkpoint_path = config.get(
         "checkpoint_path", base_checkpoint_path + task_type + ".ckpt"
     )
+    checkpoint_path = resources_dir + checkpoint_path
 
     # Load model
     model = neuralnet.BaselineModel.load_from_checkpoint(checkpoint_path, config=config)
@@ -77,8 +77,10 @@ def gex_to_adt(
 
     predictions = trainer.predict(model, dataloader)
     predictions = torch.cat(predictions, dim=0).cpu().numpy()  # type: ignore
-    scaler_mod2 = load_scaler(mod2, task_type, config)
-    return scaler_mod2.inverse_transform(predictions)
+    scaler_mod2 = load_scaler(mod2, task_type, config, resources_dir)
+    predictions = scaler_mod2.inverse_transform(predictions)
+    log.info("Prediction is made")
+    return predictions
 
 
 def predict_submission(
@@ -120,7 +122,7 @@ def predict_submission(
     return result
 
 
-def load_scaler(mod: str, task_type: str, config: dict):
+def load_scaler(mod: str, task_type: str, config: dict, resource_dir: str = ""):
     """Load StandardScaler from file
 
     Args:
@@ -136,6 +138,7 @@ def load_scaler(mod: str, task_type: str, config: dict):
         "checkpoint_path",
         base_checkpoint_path + mod + "_scaler_" + task_type + ".ckpt",
     )
+    checkpoint_path = resource_dir + checkpoint_path
     with open(checkpoint_path, "rb") as f:
         scaler = pickle.load(f)
         log.info(f"{mod} StandardScaler is loaded from {checkpoint_path}")
