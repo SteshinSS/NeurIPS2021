@@ -190,7 +190,7 @@ def evaluate(config: dict):
     log.info(f"Model is loaded from {checkpoint_path}")
     model.eval()
 
-    trainer = pl.Trainer(gpus=use_gpu)
+    trainer = pl.Trainer(gpus=use_gpu, logger=False)
 
     train_predictions = trainer.predict(model, train_dataloader)
     train_predictions = torch.cat(train_predictions, dim=0).cpu().numpy()  # type: ignore
