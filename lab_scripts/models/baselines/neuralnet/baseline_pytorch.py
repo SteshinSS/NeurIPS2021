@@ -1,8 +1,40 @@
+import anndata as ad
+import numpy as np
 import pytorch_lightning as pl
 import torch
+from lab_scripts.utils import utils
+from sklearn.preprocessing import StandardScaler
 from torch import nn
 from torch.nn import functional as F
 from torch.utils import data
+from torch.utils.data import DataLoader
+
+
+def preprocess_dataset(dataset: ad.AnnData, scaler: StandardScaler = None):
+    """Scales the dataset.
+
+    Args:
+        dataset (ad.AnnData): dataset
+        scaler (StandardScaler): Scaler to apply. Defaults to None.
+            Set it to None, to train a StandardScaler.
+
+    Returns:
+        np.ndarray: processed dataset
+        scaler: StandardScaler
+    """
+    dataset = utils.convert_to_dense(dataset).X
+    if not scaler:
+        scaler = StandardScaler()
+        dataset = scaler.fit_transform(dataset)
+    else:
+        dataset = scaler.transform(dataset)
+    return dataset, scaler
+
+
+def get_dataloader(train_mod1_X, train_mod2_X, batch_size=128, shuffle=True):
+    train_dataset = BaselineDataloader(train_mod1_X, train_mod2_X)
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle)
+    return train_dataloader
 
 
 class BaselineDataloader(data.Dataset):

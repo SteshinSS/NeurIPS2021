@@ -1,6 +1,7 @@
-"""Template main for the Modality Prediction task. Copy it and edit."""
+"""Pytorch baseline for the Modality Prediction task."""
 import argparse
 import logging
+import pickle
 import sys
 from pathlib import Path
 
@@ -8,10 +9,10 @@ import anndata as ad
 import numpy as np
 import pytorch_lightning as pl
 import torch
-from torch.utils.data import DataLoader
-from sklearn.preprocessing import StandardScaler
 import yaml  # type: ignore
 from scipy.sparse import csr_matrix
+from sklearn.preprocessing import StandardScaler
+from torch.utils.data import DataLoader
 
 # Add lab_scripts folder to path. This line should be before imports
 sys.path.append(str(Path.cwd()))
@@ -33,7 +34,51 @@ def gex_to_adt(
     input_test_mod1: ad.AnnData,
     resources_dir: str = "",
 ) -> np.ndarray:
-    pass
+    # Ensure this is right task type
+    mod1 = utils.get_mod(input_train_mod1)
+    mod2 = utils.get_mod(input_train_mod2)
+    task_type = utils.get_task_type(mod1, mod2)
+    assert task_type == "gex_to_adt"
+
+    # Load config
+    config_path = resources_dir + base_config_path + task_type + ".yaml"
+    log.info(f"Config path: {config_path}")
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
+
+    # Preprocess data
+    scaler_mod1 = load_scaler(mod1, task_type, config)
+    test_mod1_X, _ = neuralnet.preprocess_dataset(input_test_mod1, scaler_mod1)
+
+    # Here is tricky code: the dataloader returns pair (gex, adt). Since we need only
+    # first modality for prediction, I will initialize dataloader with (gex, gex).
+    dataloader = neuralnet.get_dataloader(
+        test_mod1_X, test_mod1_X, batch_size=128, shuffle=False
+    )
+    log.info("Data is preprocessed")
+
+    # Set configs
+    config["input_features"] = input_train_mod1.X.shape[1]
+    config["output_features"] = input_train_mod2.X.shape[1]
+    use_gpu = torch.cuda.is_available()
+    if not use_gpu:
+        log.warning("GPU is not detected.")
+    use_gpu = int(use_gpu)  # type: ignore
+    checkpoint_path = config.get(
+        "checkpoint_path", base_checkpoint_path + task_type + ".ckpt"
+    )
+
+    # Load model
+    model = neuralnet.BaselineModel.load_from_checkpoint(checkpoint_path, config=config)
+    log.info(f"Model is loaded from {checkpoint_path}")
+    model.eval()
+
+    trainer = pl.Trainer(gpus=use_gpu)
+
+    predictions = trainer.predict(model, dataloader)
+    predictions = torch.cat(predictions, dim=0).cpu().numpy()  # type: ignore
+    scaler_mod2 = load_scaler(mod2, task_type, config)
+    return scaler_mod2.inverse_transform(predictions)
 
 
 def predict_submission(
@@ -75,6 +120,28 @@ def predict_submission(
     return result
 
 
+def load_scaler(mod: str, task_type: str, config: dict):
+    """Load StandardScaler from file
+
+    Args:
+        mod (str): modality
+        task_type (str):
+        config (dict):
+
+    Returns:
+        StandardScaler:
+    """
+    mod_config = config.get(mod, {})
+    checkpoint_path = mod_config.get(
+        "checkpoint_path",
+        base_checkpoint_path + mod + "_scaler_" + task_type + ".ckpt",
+    )
+    with open(checkpoint_path, "rb") as f:
+        scaler = pickle.load(f)
+        log.info(f"{mod} StandardScaler is loaded from {checkpoint_path}")
+        return scaler
+
+
 def evaluate(config: dict):
     # Load data
     files = dataloader.load_data(config["data"])
@@ -89,22 +156,18 @@ def evaluate(config: dict):
     log.info("Data is loaded")
 
     # Preprocess data
-    train_mod1_X = utils.convert_to_dense(train_mod1).X
-    scaler_mod1 = StandardScaler()
-    train_mod1_X = scaler_mod1.fit_transform(train_mod1_X)
-
-    train_mod2_X = utils.convert_to_dense(train_mod2).X
-    scaler_mod2 = StandardScaler()
-    train_mod2_X = scaler_mod2.fit_transform(train_mod2_X)
-    train_dataset = neuralnet.BaselineDataloader(train_mod1_X, train_mod2_X)
-
-    train_dataloader = DataLoader(train_dataset, batch_size=128, shuffle=True)
-    test_mod1_X = utils.convert_to_dense(test_mod1).X
-    test_mod1_X = scaler_mod1.transform(test_mod1_X)
-    test_mod2_X = utils.convert_to_dense(test_mod2).X
-    test_mod2_X = scaler_mod2.transform(test_mod2_X)
-    test_dataset = neuralnet.BaselineDataloader(test_mod1_X, test_mod2_X)
-    test_dataloader = DataLoader(test_dataset, batch_size=128, shuffle=False)
+    scaler_mod1 = load_scaler(mod1, task_type, config)
+    train_mod1_X, scaler_mod1 = neuralnet.preprocess_dataset(train_mod1, scaler_mod1)
+    scaler_mod2 = load_scaler(mod2, task_type, config)
+    train_mod2_X, scaler_mod2 = neuralnet.preprocess_dataset(train_mod2, scaler_mod2)
+    train_dataloader = neuralnet.get_dataloader(
+        train_mod1_X, train_mod2_X, batch_size=128, shuffle=False
+    )
+    test_mod1_X, _ = neuralnet.preprocess_dataset(test_mod1, scaler_mod1)
+    test_mod2_X, _ = neuralnet.preprocess_dataset(test_mod2, scaler_mod2)
+    test_dataloader = neuralnet.get_dataloader(
+        test_mod1_X, test_mod2_X, batch_size=128, shuffle=False
+    )
     log.info("Data is preprocessed")
 
     # Set configs
@@ -126,14 +189,33 @@ def evaluate(config: dict):
     trainer = pl.Trainer(gpus=use_gpu)
 
     train_predictions = trainer.predict(model, train_dataloader)
-    train_predictions = torch.cat(train_predictions, dim=0).cpu().numpy()
+    train_predictions = torch.cat(train_predictions, dim=0).cpu().numpy()  # type: ignore
     train_predictions = scaler_mod2.inverse_transform(train_predictions)
     print(f"Train target metric: {mp.calculate_target(train_predictions, train_mod2)}")
 
     test_predictions = trainer.predict(model, test_dataloader)
-    test_predictions = torch.cat(test_predictions, dim=0).cpu().numpy()
+    test_predictions = torch.cat(test_predictions, dim=0).cpu().numpy()  # type: ignore
     test_predictions = scaler_mod2.inverse_transform(test_predictions)
     print(f"Test target metric: {mp.calculate_target(test_predictions, test_mod2)}")
+
+
+def save_scaler(scaler: StandardScaler, mod: str, task_type: str, config: dict):
+    """Save StandardScaler into file
+
+    Args:
+        scaler (StandardScaler):
+        mod (str): modality type
+        task_type (str): task type
+        config (dict):
+    """
+    mod_config = config.get(mod, {})
+    checkpoint_path = mod_config.get(
+        "checkpoint_path",
+        base_checkpoint_path + mod + "_scaler_" + task_type + ".ckpt",
+    )
+    with open(checkpoint_path, "wb") as f:
+        pickle.dump(scaler, f)
+        log.info(f"{mod} StandardScaler is saved to {checkpoint_path}")
 
 
 def train(config: dict):
@@ -150,22 +232,17 @@ def train(config: dict):
     log.info("Data is loaded")
 
     # Preprocess data
-    train_mod1_X = utils.convert_to_dense(train_mod1).X
-    scaler_mod1 = StandardScaler()
-    train_mod1_X = scaler_mod1.fit_transform(train_mod1_X)
+    train_mod1_X, scaler_mod1 = neuralnet.preprocess_dataset(train_mod1)
+    train_mod2_X, scaler_mod2 = neuralnet.preprocess_dataset(train_mod2)
+    train_dataloader = neuralnet.get_dataloader(
+        train_mod1_X, train_mod2_X, batch_size=128, shuffle=True
+    )
 
-    train_mod2_X = utils.convert_to_dense(train_mod2).X
-    scaler_mod2 = StandardScaler()
-    train_mod2_X = scaler_mod2.fit_transform(train_mod2_X)
-    train_dataset = neuralnet.BaselineDataloader(train_mod1_X, train_mod2_X)
-
-    train_dataloader = DataLoader(train_dataset, batch_size=128, shuffle=True)
-    test_mod1_X = utils.convert_to_dense(test_mod1).X
-    test_mod1_X = scaler_mod1.transform(test_mod1_X)
-    test_mod2_X = utils.convert_to_dense(test_mod2).X
-    test_mod2_X = scaler_mod2.transform(test_mod2_X)
-    test_dataset = neuralnet.BaselineDataloader(test_mod1_X, test_mod2_X)
-    test_dataloader = DataLoader(test_dataset, batch_size=128, shuffle=False)
+    test_mod1_X, _ = neuralnet.preprocess_dataset(test_mod1, scaler_mod1)
+    test_mod2_X, _ = neuralnet.preprocess_dataset(test_mod2, scaler_mod2)
+    test_dataloader = neuralnet.get_dataloader(
+        test_mod1_X, test_mod2_X, batch_size=128, shuffle=False
+    )
     log.info("Data is preprocessed")
 
     # Set configs
@@ -187,13 +264,11 @@ def train(config: dict):
     # Save model
     trainer.save_checkpoint(checkpoint_path)
     log.info(f"Model is saved to {checkpoint_path}")
+    save_scaler(scaler_mod1, mod1, task_type, config)
+    save_scaler(scaler_mod2, mod2, task_type, config)
 
 
 def get_parser():
-    """Creates parser.
-
-    Remove lines with adding config, if you don't need it.
-    """
     parser = argparse.ArgumentParser(description="Pytorch Baseline for MP task")
     subparsers = parser.add_subparsers(dest="action")
 
