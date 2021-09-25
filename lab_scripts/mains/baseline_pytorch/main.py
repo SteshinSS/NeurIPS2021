@@ -10,6 +10,7 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import yaml  # type: ignore
+from pytorch_lightning.loggers import WandbLogger
 from scipy.sparse import csr_matrix
 from sklearn.preprocessing import StandardScaler
 
@@ -80,7 +81,7 @@ def gex_to_adt(
     scaler_mod2 = load_scaler(mod2, task_type, config, resources_dir)
     predictions = scaler_mod2.inverse_transform(predictions)
     log.info("Prediction is made")
-    return predictions
+    return predictions  # type: ignore
 
 
 def predict_submission(
@@ -259,9 +260,23 @@ def train(config: dict):
         "checkpoint_path", base_checkpoint_path + task_type + ".ckpt"
     )
 
-    # Train model
+    # Open model
     model = neuralnet.BaselineModel(config)
-    trainer = pl.Trainer(gpus=use_gpu, checkpoint_callback=False)
+
+    # Configure logger
+    pl_logger = None
+    if config["wandb"]:
+        pl_logger = WandbLogger(
+            project="nips2021",
+            log_model="all",  # type: ignore
+            config=config,
+            tags=["baseline"],
+            config_exclude_keys=["wandb"],
+        )
+        pl_logger.watch(model)
+
+    # Train model
+    trainer = pl.Trainer(gpus=use_gpu, checkpoint_callback=False, logger=pl_logger)
     trainer.fit(model, train_dataloader, test_dataloader)
 
     # Save model
@@ -277,6 +292,7 @@ def get_parser():
 
     parser_train = subparsers.add_parser("train")
     parser_train.add_argument("config", type=argparse.FileType("r"))
+    parser_train.add_argument("--wandb", action="store_true", default=False)
     parser_evaluate = subparsers.add_parser("evaluate")
     parser_evaluate.add_argument("config", type=argparse.FileType("r"))
     return parser
@@ -291,6 +307,7 @@ def cli():
     config = yaml.safe_load(args.config)
 
     if args.action == "train":
+        config["wandb"] = args.wandb
         train(config)
     elif args.action == "evaluate":
         evaluate(config)
