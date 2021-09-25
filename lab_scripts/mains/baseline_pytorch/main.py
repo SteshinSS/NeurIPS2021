@@ -1,4 +1,7 @@
-"""Pytorch baseline for the Modality Prediction task."""
+"""Pytorch baseline for the Modality Prediction task.
+
+Actually, it implements gex to adt only task. In other cases it runs linear regression baseline.
+"""
 import argparse
 import logging
 import pickle
