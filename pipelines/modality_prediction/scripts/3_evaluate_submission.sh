@@ -3,7 +3,7 @@
 set -e
 
 # change these parameters if need be
-PIPELINE_VERSION="1.1.1"
+PIPELINE_VERSION="1.2.0"
 
 # ViashSourceDir: return the path of a bash file, following symlinks
 # usage   : ViashSourceDir ${BASH_SOURCE[0]}

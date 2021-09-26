@@ -19,7 +19,7 @@ sys.path.append(meta["resources_dir"])
 # import as usual
 import logging
 import anndata as ad
-from lab_scripts.mains import baseline_pytorch
+from lab_scripts.mains import baseline_linear as main
 
 logging.basicConfig(level=logging.INFO)
 print(meta["resources_dir"])
@@ -32,7 +32,7 @@ resources_dir = meta["resources_dir"]
 if resources_dir:
     # It contains path to folder with resources. Let's add slash to concatenate it later.
     resources_dir += "/"
-adata = baseline_pytorch.predict_submission(
+adata = main.predict_submission(
     input_train_mod1, input_train_mod2, input_test_mod1, resources_dir
 )
 
