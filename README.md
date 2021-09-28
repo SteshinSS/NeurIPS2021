@@ -124,9 +124,6 @@ pre-commit
 # For their baseline
 anndata 
 scanpy
-rpy2  # for R/python combined interface
-louvain  # dependancy for scanpy
-python-igraph  # dependancy for scanpy
 ```
 ## Рекомендации
 ### Код-стайл
