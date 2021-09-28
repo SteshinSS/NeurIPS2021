@@ -124,6 +124,7 @@ pre-commit
 # For their baseline
 anndata 
 scanpy
+rpy2  # for R/python combined interface
 ```
 ## Рекомендации
 ### Код-стайл
