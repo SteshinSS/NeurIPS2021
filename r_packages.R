@@ -6,7 +6,10 @@ bioc_packages <- c(
 )
 
 cran_packages <- c(
-  "BiocManager"
+  "BiocManager",
+  "dplyr",
+  "Seurat",
+  "anndata"
 )
 
 install.packages(cran_packages, Ncpus=8)
