@@ -31,7 +31,7 @@
 2) Отправить посылку:
     - Убедитесь, что это необходимо. В этом соревновании число посылок ограничено.
     - Смотрите инструкцию на странице соревнования на EvalAI.
-    - Я создал отдельный conda environment, потому что при установке evalai-cli были странные ошибки.
+    - Я создавал отдельный conda environment, потому что при установке evalai-cli были странные ошибки.
 
 ## Как это работает
 Главный код, который делает предсказания, находится в `script.py`. Он читает входные данные и передает их в функцию `predict_submission`. Функция `predict_submission` принимает четыре аргумента:
@@ -68,7 +68,7 @@ resources_dir -- путь к папке с `lab_scripts`, `configs` и `checkpoi
     - [Viash](https://viash.io/)
     - `script.py`
     - `config.vsh.yaml`
-    - ./scripts/*.sh
+    - `./scripts/*.sh`
     - [Пайплайн](https://github.com/openproblems-bio/neurips2021_multimodal_viash), который вызывается из внутренних скриптов
 
 ## FAQ
