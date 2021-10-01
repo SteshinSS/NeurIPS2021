@@ -9,8 +9,12 @@ cran_packages <- c(
   "BiocManager",
   "dplyr",
   "Seurat",
-  "anndata"
+  "anndata",
+  'IRkernel'
 )
 
 install.packages(cran_packages, Ncpus=8)
 BiocManager::install(bioc_packages, Ncpus=8)
+
+# Install R kernel for Jupyter
+IRkernel::installspec()

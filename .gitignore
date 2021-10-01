@@ -33,3 +33,4 @@ notebooks/*.ipynb_checkpoints
 .vscode
 .mypy_cache
 wandb
+.Rhistory
