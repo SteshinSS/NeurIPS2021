@@ -14,19 +14,19 @@ sys.path.append(str(Path.cwd()))
 from lab_scripts.data.preprocessing.common import gex_normalization, gex_qc
 from lab_scripts.utils import r_utils
 
-INPUT_PATH = "data/raw/gex_adt/totalVI_x_malt_k.h5ad"
-OUTPUT_GEX_PATH = "data/preprocessed/gex_adt/totalVI_x_malt_k_gex.h5ad"
-OUTPUT_ADT_PATH = "data/preprocessed/gex_adt/totalVI_x_malt_k_adt.h5ad"
-UNS = {"dataset_id": "totalVI_x_malt_k", "organism": "human"}
+INPUT_PATH = "data/raw/gex_adt/totalVI_10x.h5ad"
+OUTPUT_GEX_PATH = "data/preprocessed/gex_adt/totalVI_10x_gex.h5ad"
+OUTPUT_ADT_PATH = "data/preprocessed/gex_adt/totalVI_10x_adt.h5ad"
+UNS = {"dataset_id": "totalVI_10x", "organism": "human"}
 
 COMMON_GEX_CONFIG = "configs/data/gex/common.yaml"
-GEX_CONFIG = "configs/data/gex/totalVI_x_malt_k.yaml"
+GEX_CONFIG = "configs/data/gex/totalVI_10x.yaml"
 
 COMMON_ADT_CONFIG = "configs/data/adt/common.yaml"
-ADT_CONFIG = "configs/data/adt/totalVI_x_malt_k.yaml"
+ADT_CONFIG = "configs/data/adt/totalVI_10x.yaml"
 
 logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("totalVI_x_malt_k")
+log = logging.getLogger("totalVI_10x")
 
 
 def CLR_transform(sparse):
@@ -72,10 +72,6 @@ def get_adt(data):
 def preprocess_adt(data):
     with open(COMMON_ADT_CONFIG, "r") as f:
         config = yaml.safe_load(f)
-
-    # Update common config with current dataset config
-    with open(ADT_CONFIG, "r") as f:
-        config.update(yaml.safe_load(f))
 
     # Delete last 10 characters in protein names "_TotalSeqB"
     # CD3_TotalSeqB -> CD3
