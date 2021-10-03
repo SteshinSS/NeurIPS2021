@@ -1,9 +1,13 @@
-import requests  # type: ignore
-import shutil
+import sys
+from pathlib import Path
+
 import anndata as ad
-import tempfile
 import pandas as pd
 from scipy.sparse import csr_matrix
+
+sys.path.append(str(Path.cwd()))
+
+from lab_scripts.utils import utils
 
 URL = "https://github.com/YosefLab/totalVI_reproducibility/raw/master/data/malt_10k_protein_v3.h5ad"
 PATH_GEX = "data/raw/gex_adt/totalVI_10x_gex.h5ad"
@@ -12,9 +16,7 @@ PATH_ADT = "data/raw/gex_adt/totalVI_10x_adt.h5ad"
 UNS = {"dataset_id": "totalVI_10x", "organism": "human"}
 
 # Download dataset into a temporary file
-response = requests.get(URL, stream=True)
-temp_file = tempfile.NamedTemporaryFile()
-shutil.copyfileobj(response.raw, temp_file)
+temp_file = utils.download_to_tempfile(URL)
 
 data = ad.read_h5ad(temp_file.name)
 
