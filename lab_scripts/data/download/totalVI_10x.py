@@ -26,7 +26,7 @@ data_gex = ad.AnnData(
     var=data.var,
     uns=UNS,
 )
-data_gex.write(PATH_GEX)
+data_gex.write(PATH_GEX, compression="gzip")
 
 data_adt = ad.AnnData(
     X=data.obsm["protein_expression"],
@@ -34,4 +34,4 @@ data_adt = ad.AnnData(
     uns=UNS,
 )
 data_adt.obs.index = data.obs.index
-data_adt.write(PATH_ADT)
+data_adt.write(PATH_ADT, compression="gzip")
