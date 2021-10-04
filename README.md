@@ -144,9 +144,10 @@ black  # formatter
 pre-commit
 rpy2  # for R usage from python
 
-# For their baseline
+# For omics analysis
 anndata 
 scanpy
+louvain  # clusterizing method
 ```
 ## Рекомендации
 ### Код-стайл
