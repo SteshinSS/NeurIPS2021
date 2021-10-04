@@ -125,6 +125,7 @@ yapf  # formatter
 autopep8  # formatter
 black  # formatter
 pre-commit
+rpy2  # for R usage from python
 
 # For their baseline
 anndata 
