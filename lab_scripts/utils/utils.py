@@ -1,5 +1,6 @@
 import tempfile
-
+from pathlib import Path
+import os
 import anndata as ad
 import requests  # type: ignore
 from scipy.sparse.csc import csc_matrix
@@ -72,3 +73,14 @@ def download_to_tempfile(url: str):
     if file_size != 0 and progress_bar.n != file_size:
         print("Something went wrong in downloading")
     return temp_file
+
+
+def change_directory_to_repo():
+    """Changes working directory to the repository root folder.
+    """
+    current_dir = Path.cwd()
+    for parent in current_dir.parents:
+        # Repository is the first folder with the .git folder
+        files = list(parent.glob('.git'))
+        if files:
+            os.chdir(str(parent))
