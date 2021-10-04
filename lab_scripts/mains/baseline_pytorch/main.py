@@ -5,8 +5,6 @@ Actually, it implements gex to adt only task. In other cases it runs linear regr
 import argparse
 import logging
 import pickle
-import sys
-from pathlib import Path
 
 import anndata as ad
 import numpy as np
@@ -16,9 +14,6 @@ import yaml  # type: ignore
 from pytorch_lightning.loggers import WandbLogger
 from scipy.sparse import csr_matrix
 from sklearn.preprocessing import StandardScaler
-
-# Add lab_scripts folder to path. This line should be before imports
-sys.path.append(str(Path.cwd()))
 
 from lab_scripts.data import dataloader
 from lab_scripts.mains import baseline_linear

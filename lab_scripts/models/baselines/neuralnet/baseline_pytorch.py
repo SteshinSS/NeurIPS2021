@@ -1,5 +1,4 @@
 import anndata as ad
-import numpy as np
 import pytorch_lightning as pl
 import torch
 from lab_scripts.utils import utils

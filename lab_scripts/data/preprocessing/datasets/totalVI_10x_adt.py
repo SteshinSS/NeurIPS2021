@@ -1,14 +1,10 @@
 import logging
-import sys
-from pathlib import Path
 
 import anndata as ad
 import numpy as np
 import pandas as pd
 import scanpy as sc
 import yaml  # type: ignore
-
-sys.path.append(str(Path.cwd()))
 
 from lab_scripts.utils import r_utils
 

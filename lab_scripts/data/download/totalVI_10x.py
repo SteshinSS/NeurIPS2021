@@ -1,11 +1,6 @@
-import sys
-from pathlib import Path
-
 import anndata as ad
 import pandas as pd
 from scipy.sparse import csr_matrix
-
-sys.path.append(str(Path.cwd()))
 
 from lab_scripts.utils import utils
 

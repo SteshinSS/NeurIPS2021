@@ -6,7 +6,7 @@ from pathlib import Path
 import anndata as ad
 import yaml  # type: ignore
 
-sys.path.append(str(Path.cwd()))
+# sys.path.append(str(Path.cwd()))
 
 from lab_scripts.data.preprocessing.common import gex_normalization, gex_qc
 from lab_scripts.utils import r_utils

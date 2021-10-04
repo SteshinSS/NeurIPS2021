@@ -6,11 +6,6 @@ import tarfile
 import gzip
 from scipy import io
 
-import sys
-from pathlib import Path
-
-sys.path.append(str(Path.cwd()))
-
 from lab_scripts.utils import utils
 
 URL_COUNTS = "https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE164378&format=file"
