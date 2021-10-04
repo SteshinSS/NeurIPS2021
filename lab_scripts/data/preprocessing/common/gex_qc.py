@@ -1,6 +1,16 @@
 import anndata as ad
 import numpy as np
 import scanpy as sc
+from typing import Optional
+
+
+def calculate_mito_fraction(data: ad.AnnData):
+    is_mito = data.var_names.str.startswith("MT-")
+    total_mito_genes = np.sum(data[:, is_mito].X, axis=1).A1
+    total_all_genes = np.sum(data.X, axis=1).A1
+    mito_genes_percent = total_mito_genes / total_all_genes
+    data.obs["pct_counts_mt"] = mito_genes_percent
+    return data
 
 
 def filter_mito_fraction(data: ad.AnnData, threshold: float):
@@ -13,15 +23,14 @@ def filter_mito_fraction(data: ad.AnnData, threshold: float):
     Returns:
         ad.AnnData: Filtered dataset.
     """
-    is_mito = data.var_names.str.startswith("MT-")
-    total_mito_genes = np.sum(data[:, is_mito].X, axis=1).A1
-    total_all_genes = np.sum(data.X, axis=1).A1
-    mito_genes_percent = total_mito_genes / total_all_genes
-    data.obs["pct_counts_mt"] = mito_genes_percent
+    if "pct_counts_mt" not in data.obs:
+        data = calculate_mito_fraction(data)
     return data[data.obs["pct_counts_mt"] < threshold]
 
 
-def filter_count(data: ad.AnnData, min_counts: int, max_counts: int):
+def filter_count(
+    data: ad.AnnData, min_counts: Optional[int], max_counts: Optional[int]
+):
     """Filters cells by number of counts.
 
     Args:
@@ -33,12 +42,29 @@ def filter_count(data: ad.AnnData, min_counts: int, max_counts: int):
         ad.AnnData: Filtered dataset.
     """
     data.obs["n_counts"] = np.asarray(np.sum(data.X, axis=1)).reshape(-1)
-    sc.pp.filter_cells(data, min_counts=min_counts)
-    sc.pp.filter_cells(data, max_counts=max_counts)
+    if min_counts is not None:
+        sc.pp.filter_cells(data, min_counts=min_counts)
+    if max_counts is not None:
+        sc.pp.filter_cells(data, max_counts=max_counts)
     return data
 
 
-def filter_genes(data: ad.AnnData, min_genes: int, min_cells: int):
+def calculate_n_cells(data: ad.AnnData):
+    """For each gene calculates total number of cells expressing this gene.
+    Result is saved to data.var['n_cells']
+
+    Args:
+        data (ad.AnnData): Dataset
+
+    Returns:
+        ad.AnnData: Dataset
+    """
+    total_cells_expressing_gene = data.X.sum(axis=0).A1
+    data.var["n_cells"] = total_cells_expressing_gene
+    return data
+
+
+def filter_genes(data: ad.AnnData, min_genes: Optional[int], min_cells: Optional[int]):
     """Filters cells and genes.
 
     Args:
@@ -51,8 +77,10 @@ def filter_genes(data: ad.AnnData, min_genes: int, min_cells: int):
     """
     total_detected_genes = (data.X > 0).sum(axis=1)
     data.obs["n_genes"] = np.asarray(total_detected_genes).reshape(-1)
-    sc.pp.filter_cells(data, min_genes=min_genes)
-    sc.pp.filter_genes(data, min_cells=min_cells)
+    if min_genes is not None:
+        sc.pp.filter_cells(data, min_genes=min_genes)
+    if min_cells is not None:
+        sc.pp.filter_genes(data, min_cells=min_cells)
     return data
 
 

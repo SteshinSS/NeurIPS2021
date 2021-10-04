@@ -22,7 +22,7 @@ def get_clusters(data: ad.AnnData):
     sc.pp.normalize_per_cell(cluster_data, counts_per_cell_after=1e6)
     sc.pp.log1p(cluster_data)
     sc.pp.pca(cluster_data, n_comps=15)  # is it necessary?
-    sc.pp.neighbors(cluster_data)  # Why?
+    sc.pp.neighbors(cluster_data)
     sc.tl.louvain(
         cluster_data, key_added="groups", resolution=0.5
     )  # Why resolution=0.5?
