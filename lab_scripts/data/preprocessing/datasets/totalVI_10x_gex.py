@@ -20,7 +20,7 @@ def preprocess(data, config):
     data = gex_qc.standard_qc(data, config)
     log.info("Normalizing...")
     data = gex_normalization.standard_normalization(data, config)
-    data.write(OUTPUT_PATH)
+    data.write(OUTPUT_PATH, compression="gzip")
     log.info("GEX dataset has been preprocessed. Result is saved to %s", OUTPUT_PATH)
 
 
