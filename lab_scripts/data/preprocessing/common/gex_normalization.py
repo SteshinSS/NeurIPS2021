@@ -9,11 +9,12 @@ from rpy2.robjects.packages import importr
 numpy2ri.activate()
 
 
-def get_clusters(data: ad.AnnData):
+def get_clusters(data: ad.AnnData, resolution: float = 0.5):
     """Clustrizes cells for size factor calculation.
 
     Args:
         data (ad.AnnData): Dataset
+        resoultion (float): See docs of scanpy.tl.louvain
 
     Returns:
         pd.Series: Clusters of the cells
@@ -21,20 +22,20 @@ def get_clusters(data: ad.AnnData):
     cluster_data = data.copy()
     sc.pp.normalize_per_cell(cluster_data, counts_per_cell_after=1e6)
     sc.pp.log1p(cluster_data)
-    sc.pp.pca(cluster_data, n_comps=15)  # is it necessary?
     sc.pp.neighbors(cluster_data)
-    sc.tl.louvain(
-        cluster_data, key_added="groups", resolution=0.5
-    )  # Why resolution=0.5?
+    sc.tl.louvain(cluster_data, key_added="groups", resolution=resolution)
     return cluster_data.obs["groups"]
 
 
-def calculate_size_factors(data: ad.AnnData, clusters: pd.Series):
+def calculate_size_factors(
+    data: ad.AnnData, clusters: pd.Series, min_mean: float = 0.1
+):
     """Calculates size_factors by the scran R package.
 
     Args:
         data (ad.AnnData): Dataset
         clusters (pd.Series): Clusterization of the cells
+        min_mean (float): See docs of scran::computeSumFactors()
 
     Returns:
         ad.AnnData: Dataset with .obs["size_factors"]
@@ -47,8 +48,9 @@ def calculate_size_factors(data: ad.AnnData, clusters: pd.Series):
 
     data_matrix = data.X.T.toarray()
     size_factors = scran.calculateSumFactors(
-        data_matrix, clusters=clusters, **{"min.mean": 0.1}
+        data_matrix, clusters=clusters, **{"min.mean": min_mean}
     )
+    del data_matrix
     data.obs["size_factors"] = size_factors
     return data
 
@@ -62,8 +64,6 @@ def normalize(data: ad.AnnData):
     Returns:
         ad.AnnData: Dataset
     """
-    data.layers["counts"] = data.X.copy()
-
     # Normalize & log-transform
     data.X /= data.obs["size_factors"].values[:, None]
     data.layers["log_norm"] = sc.pp.log1p(data.X)

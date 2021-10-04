@@ -86,7 +86,16 @@ def filter_genes(data: ad.AnnData, min_genes: Optional[int], min_cells: Optional
 
 def standard_qc(data: ad.AnnData, config: dict):
     """Filters data by mito genes, number of counts and number of genes"""
-    data = filter_mito_fraction(data, config["mito_max_fraction"])
-    data = filter_count(data, config["cell_min_counts"], config["cell_max_counts"])
-    data = filter_genes(data, config["cell_min_genes"], config["gene_min_cells"])
+    if "mito_max_fraction" in config:
+        data = filter_mito_fraction(data, config["mito_max_fraction"])
+
+    cell_min_counts = config.get("cell_min_counts", None)
+    cell_max_counts = config.get("cell_max_counts", None)
+    if cell_min_counts or cell_max_counts:
+        data = filter_count(data, cell_min_counts, cell_max_counts)
+
+    cell_min_genes = config.get("cell_min_genes", None)
+    gene_min_cells = config.get("gene_min_cells", None)
+    if cell_min_genes or gene_min_cells:
+        data = filter_genes(data, cell_min_genes, gene_min_cells)
     return data

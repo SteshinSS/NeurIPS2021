@@ -1,0 +1,5 @@
+cell_max_counts: 20000
+
+cell_min_counts: 2000
+
+gene_min_cells: 20
