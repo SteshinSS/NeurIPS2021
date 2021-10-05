@@ -6,8 +6,16 @@ bioc_packages <- c(
 )
 
 cran_packages <- c(
-  "BiocManager"
+  "BiocManager",
+  "dplyr",
+  "Seurat",
+  "anndata",
+  "IRkernel",
+  "Signac"
 )
 
 install.packages(cran_packages, Ncpus=8)
 BiocManager::install(bioc_packages, Ncpus=8)
+
+# Install R kernel for Jupyter
+IRkernel::installspec()

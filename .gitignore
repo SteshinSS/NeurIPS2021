@@ -1,12 +1,5 @@
 # do not sync datasets
-data/*
-
-# ...but sync scripts
-!data/README.md
-!data/download_data.py
-
-# do not sync checkpoints
-checkpoints/**/*.ckpt
+data/official
 
 # do not sync pipeline output
 pipelines/modality_prediction/*
@@ -33,3 +26,4 @@ notebooks/*.ipynb_checkpoints
 .vscode
 .mypy_cache
 wandb
+.Rhistory

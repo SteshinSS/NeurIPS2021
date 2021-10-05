@@ -1,0 +1,5 @@
+# Minimal number of counts in cell
+cell_min_counts: 2200
+
+# Maximal number of counts in cell
+cell_max_counts: 10000

@@ -1,15 +1,10 @@
 """Template main for the Modality Prediction task. Copy it and edit."""
 import argparse
 import logging
-import sys
-from pathlib import Path
 
 import anndata as ad
 import yaml  # type: ignore
 from scipy.sparse import csr_matrix
-
-# Add lab_scripts folder to path. This line should be before imports
-sys.path.append(str(Path.cwd()))
 
 from lab_scripts.data import dataloader
 from lab_scripts.metrics import mp

@@ -4,14 +4,10 @@ Run ElasticNet and do SVD decomposition for dimension reduction."""
 import argparse
 import logging
 import pickle
-import sys
-from pathlib import Path
 from scipy.sparse import csr_matrix
 
 import anndata as ad
 import yaml  # type: ignore
-
-sys.path.append(str(Path.cwd()))
 
 from lab_scripts.data import dataloader
 from lab_scripts.metrics import mp
