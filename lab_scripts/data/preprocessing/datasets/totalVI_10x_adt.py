@@ -7,7 +7,6 @@ from lab_scripts.utils import r_utils
 
 INPUT_PATH = "data/raw/gex_adt/totalVI_10x_adt.h5ad"
 OUTPUT_PATH = "data/preprocessed/gex_adt/totalVI_10x_adt.h5ad"
-
 CONFIG = "configs/data/adt/totalVI_10x.yaml"
 
 logging.basicConfig(level=logging.INFO)

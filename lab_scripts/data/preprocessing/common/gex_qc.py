@@ -5,6 +5,14 @@ from typing import Optional
 
 
 def calculate_mito_fraction(data: ad.AnnData):
+    """Calculates faction of mitochondrial genes
+
+    Args:
+        data (ad.AnnData): Dataset
+
+    Returns:
+        ad.AnnData: Dataset with data.obs['pct_counts_mt']
+    """
     is_mito = data.var_names.str.startswith("MT-")
     total_mito_genes = np.sum(data[:, is_mito].X, axis=1).A1
     total_all_genes = np.sum(data.X, axis=1).A1

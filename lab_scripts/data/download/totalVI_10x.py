@@ -1,8 +1,7 @@
 import anndata as ad
 import pandas as pd
-from scipy.sparse import csr_matrix
-
 from lab_scripts.utils import utils
+from scipy.sparse import csr_matrix
 
 URL = "https://github.com/YosefLab/totalVI_reproducibility/raw/master/data/malt_10k_protein_v3.h5ad"
 PATH_GEX = "data/raw/gex_adt/totalVI_10x_gex.h5ad"
