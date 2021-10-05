@@ -27,3 +27,5 @@ notebooks/*.ipynb_checkpoints
 .mypy_cache
 wandb
 .Rhistory
+lightning_logs
+
