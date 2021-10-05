@@ -5,14 +5,7 @@
 
 ## Установка
 ### Пайплайн
-Авторы соревнования подготовили для нас пайплайн. Если вы не собираетесь засылать решение на сервер, установите только AWS CLI.
-
-Установка всего пайплайна описана [здесь](https://openproblems.bio/neurips_docs/submission/quickstart/), но вкратце:
-1) Установите [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2-linux.html#cliv2-linux-install).
-2) Установите [Docker](https://docs.docker.com/get-docker/).
-3) Установите [OpenJDK](https://adoptopenjdk.net/?variant=openjdk11&jvmVariant=hotspot). В результате у вас должна работать команда `which java`. Если не работает, добавьте папку bin из установки в [$PATH](https://losst.ru/peremennaya-path-v-linux).
-
-AWS CLI нужен для скачивания датасетов. Docker и OpenJDK нужны для запуска пайплайна авторов. Они вам нужны только, если вы будете засылать посылку на сервер.
+Установите [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2-linux.html#cliv2-linux-install). Он нужен для скачивания датасетов и чекпоинтов с нашего AWS S3 хранилища.
 
 ### Наша среда
 Мы все используем разные пакеты. Чтобы скрипты работали у всех одинаково, мы используем единую среду.
