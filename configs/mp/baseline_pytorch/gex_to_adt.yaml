@@ -3,4 +3,4 @@ use_dropout: True
 dropout: 0.5
 
 # dataset name
-data: pm/official/gex_to_adt
+data: mp/official/gex_to_adt

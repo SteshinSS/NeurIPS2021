@@ -3,7 +3,7 @@ alpha: 1.0
 l1_ratio: 0.5
 
 # dataset name
-data: pm/official/atac_to_gex
+data: mp/official/atac_to_gex
 
 # preprocessing parameters
 mod1:
