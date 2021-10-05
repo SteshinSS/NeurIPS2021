@@ -10,7 +10,8 @@ cran_packages <- c(
   "dplyr",
   "Seurat",
   "anndata",
-  'IRkernel'
+  "IRkernel",
+  "Signac"
 )
 
 install.packages(cran_packages, Ncpus=8)
