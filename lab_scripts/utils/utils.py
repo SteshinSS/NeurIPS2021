@@ -5,6 +5,7 @@ import anndata as ad
 import requests  # type: ignore
 from scipy.sparse.csc import csc_matrix
 from tqdm import tqdm
+import pytorch_lightning as pl
 
 
 def get_mod(dataset: ad.AnnData) -> str:
@@ -84,3 +85,7 @@ def change_directory_to_repo():
         files = list(parent.glob('.git'))
         if files:
             os.chdir(str(parent))
+
+
+def set_deafult_seed(seed=228):
+    pl.seed_everything(seed, workers=True)
