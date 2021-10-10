@@ -1,2 +1,18 @@
-data: mp/official/gex_to_adt
+data: 
+  dataset_name: mp/official/gex_to_adt
+  mod1:
+    use_normalized: False
+    scale: True
+    top_n_genes: 3000
+  mod2:
+    use_normalized: False
+    scale: True
 
+
+model:
+  first_dims: [700, 300]
+  second_dims: [100, 100]
+  latent_dim: 50
+  activation: tanh
+  lr: 0.01
+  batch_size: 128
