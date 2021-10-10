@@ -103,7 +103,11 @@ def evaluate(config: dict):
     train_second_X = second_processor.transform(dataset["train_mod2"])
     test_second_X = second_processor.transform(dataset["test_mod2"])
 
+    # Add input feature size
     model_config = config["model"]
+    model_config["first_dims"].insert(0, train_first_X.shape[1])
+    model_config["second_dims"].insert(0, train_second_X.shape[1])
+
     train_dataset = processor.TwoOmicsDataset(train_first_X, train_second_X)
     train_dataloader = DataLoader(train_dataset, batch_size=model_config["batch_size"])
     test_dataset = processor.TwoOmicsDataset(test_first_X, test_second_X)
@@ -129,20 +133,16 @@ def evaluate(config: dict):
     # Run predictions
     train_predictions = trainer.predict(model, train_dataloader)
     train_predictions = torch.cat(train_predictions, dim=0).cpu().numpy()  # type: ignore
-    first_size_factors = dataset["train_mod1"].obs["size_factors"].to_numpy()
-    train_predictions = first_processor.inverse_transform(
-        train_predictions, first_size_factors
-    )
+    print(train_predictions.shape)  # type: ignore
+    train_predictions = second_processor.inverse_transform(train_predictions)
+    
     print(
         f"Train target metric: {mp.calculate_target(train_predictions, dataset['train_mod2'])}"
     )
 
     test_predictions = trainer.predict(model, test_dataloader)
     test_predictions = torch.cat(test_predictions, dim=0).cpu().numpy()  # type: ignore
-    second_size_factors = dataset["test_mod1"].obs["size_factors"].to_numpy()
-    test_predictions = second_processor.inverse_transform(
-        test_predictions, second_size_factors
-    )
+    test_predictions = second_processor.inverse_transform(test_predictions)
     print(
         f"Test target metric: {mp.calculate_target(test_predictions, dataset['test_mod2'])}"
     )

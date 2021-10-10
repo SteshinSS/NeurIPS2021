@@ -5,7 +5,7 @@ dataset. You want to use first two for training. Instead of opening them manuall
 them into this module, so you need only to call dataloader.load_data('my_dataset').
 """
 
-
+from lab_scripts.utils import utils
 import anndata as ad
 
 library = {
@@ -35,6 +35,14 @@ library = {
     },
 }
 
+COMMON_GEX_ADT = "data/official/common/openproblems_bmmc_cite_phase1/openproblems_bmmc_cite_phase1.manual_formatting.output_rna.h5ad"
+COMMON_GEX_ATAC = "data/official/common/openproblems_bmmc_multiome_phase1/openproblems_bmmc_multiome_phase1.manual_formatting.output_rna.h5ad"
+COMMON_ADT = "data/official/common/openproblems_bmmc_cite_phase1/openproblems_bmmc_cite_phase1.manual_formatting.output_mod2.h5ad"
+COMMON_ATAC = "data/official/common/openproblems_bmmc_multiome_phase1/openproblems_bmmc_multiome_phase1.manual_formatting.output_mod2.h5ad"
+
+
+
+
 
 def load_data(name):
     """Opens dataset by name.
@@ -50,4 +58,39 @@ def load_data(name):
     result = dict()
     for name, path in files.items():
         result[name] = ad.read_h5ad(path)
-    return result
+    return inject_size_factors(result)
+
+
+def inject_size_factors(data: dict):
+    """At the current moment, authors forgot to save size_factors in datasets.
+    This function adds them.
+
+    Args:
+        data (dict): load_data's output
+    """
+    def inject(train, test, mod, task_type):
+        if mod == 'gex':
+            if task_type == 'gex_to_adt':
+                common = ad.read_h5ad(COMMON_GEX_ADT)
+            else:
+                common = ad.read_h5ad(COMMON_GEX_ATAC)
+        else:
+            return train, test
+        
+        common_train = common[common.obs['is_train'], :]
+        train.obs['size_factors'] = common_train.obs['size_factors']
+        common_test = common[~common.obs['is_train'], :]
+        test.obs['size_factors'] = common_test.obs['size_factors']
+        return train, test
+
+    first_mod = utils.get_mod(data['train_mod1'])
+    second_mod = utils.get_mod(data['train_mod2'])
+    task_type = utils.get_task_type(first_mod, second_mod)
+    data['train_mod1'], data['test_mod1'] = inject(data['train_mod1'], data['test_mod1'], first_mod, task_type)
+    data['train_mod2'], data['test_mod2'] = inject(data['train_mod2'], data['test_mod2'], second_mod, task_type)
+    return data
+
+
+if __name__=='__main__':
+    data = load_data('mp/official/gex_to_adt')
+    print(data['train_mod1'].obs['size_factors'].shape)

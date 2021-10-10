@@ -5,7 +5,7 @@ data:
     scale: True
     top_n_genes: 3000
   mod2:
-    use_normalized: False
+    use_normalized: True
     scale: True
 
 
