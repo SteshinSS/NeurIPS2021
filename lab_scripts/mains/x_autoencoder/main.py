@@ -1,16 +1,13 @@
 import argparse
 import logging
 import pickle
-from typing import Callable, Optional
 
 import anndata as ad
-import numpy as np
 import pytorch_lightning as pl
 import torch
 import yaml  # type: ignore
 from lab_scripts.data import dataloader
 from lab_scripts.data.integration import processor
-from lab_scripts.metrics import mp
 from lab_scripts.models import x_autoencoder
 from lab_scripts.utils import utils
 from pytorch_lightning.loggers import WandbLogger
@@ -93,8 +90,10 @@ def evaluate(config: dict):
     )
     with open(first_processor_checkpoint_path, "rb") as f:
         first_processor = pickle.load(f)
-    train_first_X, _ = first_processor.transform(dataset["train_mod1"])
-    test_first_X, _ = first_processor.transform(dataset["test_mod1"])
+    train_first_X, train_first_inverse = first_processor.transform(
+        dataset["train_mod1"]
+    )
+    test_first_X, test_first_inverse = first_processor.transform(dataset["test_mod1"])
 
     second_config = data_config.get("mod2", {})
     second_processor_checkpoint_path = get_processor_path(
@@ -102,8 +101,12 @@ def evaluate(config: dict):
     )
     with open(second_processor_checkpoint_path, "rb") as f:
         second_processor = pickle.load(f)
-    train_second_X, train_second_inverse = second_processor.transform(dataset["train_mod2"])
-    test_second_X, test_second_inverse = second_processor.transform(dataset["test_mod2"])
+    train_second_X, train_second_inverse = second_processor.transform(
+        dataset["train_mod2"]
+    )
+    test_second_X, test_second_inverse = second_processor.transform(
+        dataset["test_mod2"]
+    )
 
     # Add input feature size
     model_config = config["model"]
@@ -133,19 +136,22 @@ def evaluate(config: dict):
     trainer = pl.Trainer(gpus=use_gpu, logger=False)
 
     # Run predictions
-    train_predictions = trainer.predict(model, train_dataloader)
-    train_predictions = torch.cat(train_predictions, dim=0).cpu() # type: ignore
-    train_predictions = train_second_inverse(train_predictions)
-    print(
-        f"Train target metric: {mp.calculate_target(train_predictions, dataset['train_mod2'])}"
-    )
+    def run_dataset(dataloader, name, first_target, second_target):
+        predictions = trainer.predict(model, dataloader)
+        first_to_second = []
+        second_to_first = []
+        for (first_to_second_batch, second_to_first_batch) in predictions:  # type: ignore
+            first_to_second.append(first_to_second_batch)
+            second_to_first.append(second_to_first_batch)
+        print(
+            f"{name} {first_mod} to {second_mod} metric: {x_autoencoder.calculate_metric(first_to_second, train_second_inverse, second_target)}"
+        )
+        print(
+            f"{name} {second_mod} to {first_mod} metric: {x_autoencoder.calculate_metric(second_to_first, train_first_inverse, first_target)}"
+        )
 
-    test_predictions = trainer.predict(model, test_dataloader)
-    test_predictions = torch.cat(test_predictions, dim=0).cpu() # type: ignore
-    test_predictions = test_second_inverse(test_predictions)
-    print(
-        f"Test target metric: {mp.calculate_target(test_predictions, dataset['test_mod2'])}"
-    )
+    run_dataset(train_dataloader, "Train", dataset["train_mod1"], dataset["train_mod2"])
+    run_dataset(test_dataloader, "Test", dataset["test_mod1"], dataset["test_mod2"])
 
 
 def train(config: dict):
@@ -158,15 +164,15 @@ def train(config: dict):
     log.info("Data is loaded")
 
     # Preprocess data
-    first_mod_config = data_config['mod1']
+    first_mod_config = data_config["mod1"]
     first_processor = processor.Processor(first_mod_config, first_mod)
     train_first_X, _ = first_processor.fit_transform(dataset["train_mod1"])
-    test_first_X, _ = first_processor.transform(dataset["test_mod1"])
+    test_first_X, first_inverse = first_processor.transform(dataset["test_mod1"])
 
-    second_mod_config = data_config['mod2']
+    second_mod_config = data_config["mod2"]
     second_processor = processor.Processor(second_mod_config, second_mod)
     train_second_X, _ = second_processor.fit_transform(dataset["train_mod2"])
-    test_second_X, _ = second_processor.transform(dataset["test_mod2"])
+    test_second_X, second_inverse = second_processor.transform(dataset["test_mod2"])
 
     # Add input feature size
     model_config = config["model"]
@@ -177,7 +183,7 @@ def train(config: dict):
     train_dataloader = DataLoader(
         train_dataset, batch_size=model_config["batch_size"], shuffle=True
     )
-    test_dataset = processor.TwoOmicsDataset(test_first_X, test_second_X)
+    test_dataset = processor.TwoOmicsDataset(test_first_X.cuda(), test_second_X.cuda())
     test_dataloader = DataLoader(test_dataset, batch_size=model_config["batch_size"])
     log.info("Data is preprocessed")
 
@@ -186,7 +192,7 @@ def train(config: dict):
     if config["wandb"]:
         pl_logger = WandbLogger(
             project="nips2021",
-            log_model="all",  # type: ignore
+            log_model=False,  # type: ignore
             config=config,
             tags=["baseline", "x_autoencoder"],
             config_exclude_keys=["wandb"],
@@ -197,14 +203,29 @@ def train(config: dict):
         log.warning("GPU is not detected.")
     use_gpu = int(use_gpu)  # type: ignore
 
+    validation_callback = x_autoencoder.TargetCallback(
+        test_dataloader=test_dataloader,
+        first_inverse=first_inverse,
+        first_target=dataset["test_mod1"],
+        second_inverse=second_inverse,
+        second_target=dataset["test_mod2"],
+    )
+
     # Train model
     model = x_autoencoder.X_autoencoder(model_config)
+    if pl_logger:
+        pl_logger.watch(model)
+
     trainer = pl.Trainer(
-        gpus=use_gpu, max_epochs=5000, checkpoint_callback=False, logger=pl_logger,
+        gpus=use_gpu,
+        max_epochs=5000,
+        logger=pl_logger,
+        callbacks=[
+            validation_callback,
+        ],
+        deterministic=True,
     )
-    trainer.fit(
-        model, train_dataloaders=train_dataloader, val_dataloaders=test_dataloader
-    )
+    trainer.fit(model, train_dataloaders=train_dataloader)
 
     # Save model
     checkpoint_path = config.get(

@@ -3,7 +3,6 @@ data:
   mod1:
     use_normalized: True
     scale: True
-    # top_n_genes: 3000
   mod2:
     use_normalized: True
     scale: True
@@ -14,5 +13,5 @@ model:
   second_dims: [100, 100]
   latent_dim: 300
   activation: selu
-  lr: 0.001
+  lr: 0.0005
   batch_size: 128
