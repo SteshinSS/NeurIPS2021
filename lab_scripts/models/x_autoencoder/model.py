@@ -52,7 +52,7 @@ class X_autoencoder(pl.LightningModule):
         if self.activation == "relu":
             activation = F.relu
         elif self.activation == "selu":
-            activation = F.selu
+            activation = F.leaky_relu
         elif self.activation == 'tanh':
             activation = torch.tanh  # type: ignore
         self.loss = nn.MSELoss()
@@ -93,8 +93,8 @@ class X_autoencoder(pl.LightningModule):
         second_to_second_loss = self.loss(second_to_second, second)
         second_loss = first_to_second_loss + second_to_second_loss
         loss = first_loss + second_loss
-        self.log("train_loss", first_to_second_loss, on_epoch=True, prog_bar=True, logger=True)
-        return first_to_second_loss
+        self.log("train_loss", loss, on_epoch=True, prog_bar=True, logger=True)
+        return loss
 
     
     def validation_step(self, batch, batch_idx):
@@ -108,7 +108,6 @@ class X_autoencoder(pl.LightningModule):
             + self.loss(second_to_first, first)
             + self.loss(second_to_second, second)
         )
-        loss = self.loss(first_to_second, second)
         self.log("val_loss", loss, on_epoch=True, prog_bar=True, logger=True)
     
     def predict_step(self, batch, batch_idx):

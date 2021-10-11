@@ -14,5 +14,5 @@ model:
   second_dims: [100, 100]
   latent_dim: 300
   activation: selu
-  lr: 0.005
+  lr: 0.001
   batch_size: 128
