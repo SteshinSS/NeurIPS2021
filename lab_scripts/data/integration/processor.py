@@ -1,11 +1,11 @@
-from typing import Optional
+from typing import Optional, no_type_check
 
 import anndata as ad
 import numpy as np
 import pandas as pd
 import scanpy as sc
 import torch
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import StandardScaler
 from torch.utils.data import Dataset
 
 
@@ -14,20 +14,21 @@ class Processor:
     Does model-depending data preprocessing.
     """
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, mod: str):
         self.top_n_genes = config.get("top_n_genes", None)
         self.use_normalized = config.get("use_normalized", None)
         self.scale = config.get("scale", None)
+        self.mod = mod
         self.fitted = False
 
     def fit(self, dataset: ad.AnnData):
         if self.top_n_genes:
             self._find_highly_variable_genes(dataset)
             dataset = dataset[:, self.highly_variable_genes]
-        
+
         matrix = self._get_matrix(dataset)
         if self.scale:
-            self.scaler = MinMaxScaler()
+            self.scaler = StandardScaler()
             self.scaler.fit(matrix)
         self.fitted = True
 
@@ -41,20 +42,41 @@ class Processor:
         matrix = self._get_matrix(dataset)
         if self.scale:
             matrix = self.scaler.transform(matrix)
-        return torch.tensor(matrix, dtype=torch.float32)
+
+        args = {}  # type: ignore
+        if self.mod == "gex":
+            size_factors = dataset.obs["size_factors"].to_numpy()
+            size_factors = np.expand_dims(size_factors, axis=-1)
+            args['size_factors'] = size_factors
+        inverse_transform = self._get_inverse_transform(args)
+        return torch.tensor(matrix, dtype=torch.float32), inverse_transform
 
     def fit_transform(self, dataset: ad.AnnData):
         self.fit(dataset)
         return self.transform(dataset)
 
-    def inverse_transform(
-        self, matrix: np.ndarray, size_factors: Optional[pd.Series] = None
-    ):
+    def _get_inverse_transform(self, args):
+        @no_type_check
+        def f(matrix: torch.Tensor):
+            matrix = matrix.numpy()
+            if f.scale:
+                matrix = f.scaler.inverse_transform(matrix)
+            if not f.use_normalized:
+                if f.mod == "gex":
+                    matrix = matrix / f.size_factors
+                    matrix = np.log(matrix + 1)
+                else:
+                    raise NotImplementedError()
+            return matrix
+
+        f.scale = self.scale
         if self.scale:
-            matrix = self.scaler.inverse_transform(matrix)
-        if not self.use_normalized:
-            matrix = matrix * size_factors.to_numpy()  # type: ignore
-        return matrix
+            f.scaler = self.scaler
+        f.use_normalized = self.use_normalized
+        f.mod = self.mod
+        if self.mod == "gex":
+            f.size_factors = args["size_factors"]
+        return f
 
     def construct_anndata(self, matrix: np.ndarray, dataset):
         raise NotImplementedError()
@@ -82,3 +104,89 @@ class TwoOmicsDataset(Dataset):
 
     def __getitem__(self, idx):
         return (self.first[idx], self.second[idx])
+
+
+def compare(lhs, rhs):
+    lhs = np.ma.masked_array(lhs, lhs > 0.0)
+    rhs = np.ma.masked_array(rhs, rhs > 0.0)
+    difference = (lhs - rhs).mean()
+    if difference >= 0.01:
+        print(difference)
+        assert False
+
+
+def __test_1():
+    from lab_scripts.data import dataloader
+    data = dataloader.load_data('mp/official/gex_to_adt')['train_mod1']
+    config = {
+        'use_normalized': False,
+        'scale': False,
+    }
+    mod = "gex"
+    processor = Processor(config, mod)
+    
+    result, inverse_function = processor.fit_transform(data)
+    compare(result, data.layers['counts'].toarray())
+    compare(inverse_function(result), data.X.toarray())
+
+def __test_2():
+    from lab_scripts.data import dataloader
+    data = dataloader.load_data('mp/official/gex_to_adt')['train_mod1']
+    config = {
+        'use_normalized': True,
+        'scale': False
+    }
+    mod = "gex"
+    processor = Processor(config, mod)
+    result, inverse_function = processor.fit_transform(data)
+    compare(result, data.X.toarray())
+    compare(inverse_function(result), data.X.toarray())
+
+def __test_3():
+    from lab_scripts.data import dataloader
+    data = dataloader.load_data('mp/official/gex_to_adt')['train_mod1']
+    config = {
+        'use_normalized': True,
+        'scale': True
+    }
+    mod = "gex"
+    processor = Processor(config, mod)
+    result, inverse_function = processor.fit_transform(data)
+    assert np.abs(result.mean()) < 0.01
+    compare(inverse_function(result), data.X.toarray())
+
+def __test_4():
+    from lab_scripts.data import dataloader
+    data = dataloader.load_data('mp/official/gex_to_adt')['train_mod1']
+    config = {
+        'use_normalized': False,
+        'scale': True
+    }
+    mod = "gex"
+    processor = Processor(config, mod)
+    result, inverse_function = processor.fit_transform(data)
+    assert np.abs(result.mean()) < 0.01
+    compare(inverse_function(result), data.X.toarray())
+
+def __test_5():
+    from lab_scripts.data import dataloader
+    data = dataloader.load_data('mp/official/gex_to_adt')['train_mod2']
+    config = {
+        'use_normalized': True,
+        'scale': True
+    }
+    mod = "adt"
+    processor = Processor(config, mod)
+    result, inverse_function = processor.fit_transform(data)
+    assert np.abs(result.mean()) < 0.01
+    compare(inverse_function(result), data.X.toarray()) 
+
+
+if __name__=='__main__':
+    print('Running tests...')
+    __test_1()
+    __test_2()
+    __test_3()
+    __test_4()
+    __test_5()
+    print('Done')

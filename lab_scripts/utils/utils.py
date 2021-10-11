@@ -6,6 +6,7 @@ import requests  # type: ignore
 from scipy.sparse.csc import csc_matrix
 from tqdm import tqdm
 import pytorch_lightning as pl
+import numpy as np
 
 
 def get_mod(dataset: ad.AnnData) -> str:
@@ -89,3 +90,19 @@ def change_directory_to_repo():
 
 def set_deafult_seed(seed=228):
     pl.seed_everything(seed, workers=True)
+
+
+def gex_counts_to_normalized(counts: np.ndarray, size_factors: np.ndarray):
+    """Converts raw GEX counts into size factors
+
+    Args:
+        counts (np.ndarray): count matrix
+        size_factors (np.ndarray): cells' size_factor
+
+    Returns:
+        np.ndarray: normalized counts matrix
+    """
+    size_factors = np.expand_dims(size_factors, axis=-1)
+    counts = counts / size_factors
+    counts = np.log(counts + 1)
+    return counts

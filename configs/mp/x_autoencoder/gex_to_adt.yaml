@@ -1,18 +1,18 @@
 data: 
   dataset_name: mp/official/gex_to_adt
   mod1:
-    use_normalized: False
+    use_normalized: True
     scale: True
-    top_n_genes: 3000
+    # top_n_genes: 3000
   mod2:
     use_normalized: True
     scale: True
 
 
 model:
-  first_dims: [700, 300]
+  first_dims: [2000, 700, 500]
   second_dims: [100, 100]
-  latent_dim: 50
-  activation: tanh
-  lr: 0.01
+  latent_dim: 300
+  activation: selu
+  lr: 0.005
   batch_size: 128

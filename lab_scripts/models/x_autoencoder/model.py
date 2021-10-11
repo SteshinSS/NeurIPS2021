@@ -1,4 +1,4 @@
-from typing import Callable, Sequence
+from typing import Callable, Optional, Sequence
 
 import pytorch_lightning as pl
 import torch
@@ -42,8 +42,7 @@ class Decoder(pl.LightningModule):
     
     def forward(self, x):
         x = self.net(x)
-        return F.sigmoid(x)
-
+        return x
 
 class X_autoencoder(pl.LightningModule):
     def __init__(self, config: dict):
@@ -94,13 +93,9 @@ class X_autoencoder(pl.LightningModule):
         second_to_second_loss = self.loss(second_to_second, second)
         second_loss = first_to_second_loss + second_to_second_loss
         loss = first_loss + second_loss
-        self.log("train_loss", loss, on_epoch=True, prog_bar=True, logger=True)
+        self.log("train_loss", first_to_second_loss, on_epoch=True, prog_bar=True, logger=True)
+        return first_to_second_loss
 
-        self.log("first_to_first", first_to_first_loss, on_epoch=True)
-        self.log("first_to_second", first_to_second_loss, on_epoch=True)
-        self.log("second_to_first", second_to_first_loss, on_epoch=True)
-        self.log("second_to_second", second_to_second_loss, on_epoch=True)
-        return loss
     
     def validation_step(self, batch, batch_idx):
         first, second = batch
@@ -113,18 +108,20 @@ class X_autoencoder(pl.LightningModule):
             + self.loss(second_to_first, first)
             + self.loss(second_to_second, second)
         )
+        loss = self.loss(first_to_second, second)
         self.log("val_loss", loss, on_epoch=True, prog_bar=True, logger=True)
     
     def predict_step(self, batch, batch_idx):
-        first, _ = batch
-        first_latent = self.first_encoder(first)
-        second = self.second_decoder(first_latent)
-        return second
+        first, second = batch
+        first_to_first, first_to_second, second_to_first, second_to_second = self(
+            first, second
+        )
+        return first_to_second
 
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
-        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.2, patience=30, cooldown=50, verbose=True)
+        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.2, patience=50, verbose=True)
         return {
             'optimizer': optimizer,
             'lr_scheduler': {

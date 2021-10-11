@@ -1,8 +1,10 @@
 import argparse
 import logging
 import pickle
+from typing import Callable, Optional
 
 import anndata as ad
+import numpy as np
 import pytorch_lightning as pl
 import torch
 import yaml  # type: ignore
@@ -91,8 +93,8 @@ def evaluate(config: dict):
     )
     with open(first_processor_checkpoint_path, "rb") as f:
         first_processor = pickle.load(f)
-    train_first_X = first_processor.transform(dataset["train_mod1"])
-    test_first_X = first_processor.transform(dataset["test_mod1"])
+    train_first_X, _ = first_processor.transform(dataset["train_mod1"])
+    test_first_X, _ = first_processor.transform(dataset["test_mod1"])
 
     second_config = data_config.get("mod2", {})
     second_processor_checkpoint_path = get_processor_path(
@@ -100,8 +102,8 @@ def evaluate(config: dict):
     )
     with open(second_processor_checkpoint_path, "rb") as f:
         second_processor = pickle.load(f)
-    train_second_X = second_processor.transform(dataset["train_mod2"])
-    test_second_X = second_processor.transform(dataset["test_mod2"])
+    train_second_X, train_second_inverse = second_processor.transform(dataset["train_mod2"])
+    test_second_X, test_second_inverse = second_processor.transform(dataset["test_mod2"])
 
     # Add input feature size
     model_config = config["model"]
@@ -132,17 +134,15 @@ def evaluate(config: dict):
 
     # Run predictions
     train_predictions = trainer.predict(model, train_dataloader)
-    train_predictions = torch.cat(train_predictions, dim=0).cpu().numpy()  # type: ignore
-    print(train_predictions.shape)  # type: ignore
-    train_predictions = second_processor.inverse_transform(train_predictions)
-    
+    train_predictions = torch.cat(train_predictions, dim=0).cpu() # type: ignore
+    train_predictions = train_second_inverse(train_predictions)
     print(
         f"Train target metric: {mp.calculate_target(train_predictions, dataset['train_mod2'])}"
     )
 
     test_predictions = trainer.predict(model, test_dataloader)
-    test_predictions = torch.cat(test_predictions, dim=0).cpu().numpy()  # type: ignore
-    test_predictions = second_processor.inverse_transform(test_predictions)
+    test_predictions = torch.cat(test_predictions, dim=0).cpu() # type: ignore
+    test_predictions = test_second_inverse(test_predictions)
     print(
         f"Test target metric: {mp.calculate_target(test_predictions, dataset['test_mod2'])}"
     )
@@ -158,15 +158,15 @@ def train(config: dict):
     log.info("Data is loaded")
 
     # Preprocess data
-    first_mod_config = data_config.get("mod1", {})
-    first_processor = processor.Processor(first_mod_config)
-    train_first_X = first_processor.fit_transform(dataset["train_mod1"])
-    test_first_X = first_processor.transform(dataset["test_mod1"])
+    first_mod_config = data_config['mod1']
+    first_processor = processor.Processor(first_mod_config, first_mod)
+    train_first_X, _ = first_processor.fit_transform(dataset["train_mod1"])
+    test_first_X, _ = first_processor.transform(dataset["test_mod1"])
 
-    second_mod_config = data_config.get("mod2", {})
-    second_processor = processor.Processor(second_mod_config)
-    train_second_X = second_processor.fit_transform(dataset["train_mod2"])
-    test_second_X = second_processor.transform(dataset["test_mod2"])
+    second_mod_config = data_config['mod2']
+    second_processor = processor.Processor(second_mod_config, second_mod)
+    train_second_X, _ = second_processor.fit_transform(dataset["train_mod2"])
+    test_second_X, _ = second_processor.transform(dataset["test_mod2"])
 
     # Add input feature size
     model_config = config["model"]
@@ -200,10 +200,10 @@ def train(config: dict):
     # Train model
     model = x_autoencoder.X_autoencoder(model_config)
     trainer = pl.Trainer(
-        gpus=use_gpu, max_epochs=5000, checkpoint_callback=False, logger=pl_logger
+        gpus=use_gpu, max_epochs=5000, checkpoint_callback=False, logger=pl_logger,
     )
     trainer.fit(
-        model, train_dataloader=train_dataloader, val_dataloaders=test_dataloader
+        model, train_dataloaders=train_dataloader, val_dataloaders=test_dataloader
     )
 
     # Save model
@@ -264,4 +264,5 @@ def cli():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+    utils.set_deafult_seed()
     cli()
