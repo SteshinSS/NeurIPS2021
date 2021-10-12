@@ -14,4 +14,6 @@ model:
   latent_dim: 300
   activation: selu
   lr: 0.0005
-  batch_size: 128
+  batch_size: 256
+  use_mmd_loss: True
+  mmd_lambda: 0.1

@@ -113,9 +113,9 @@ def evaluate(config: dict):
     model_config["first_dims"].insert(0, train_first_X.shape[1])
     model_config["second_dims"].insert(0, train_second_X.shape[1])
 
-    train_dataset = processor.TwoOmicsDataset(train_first_X, train_second_X)
+    train_dataset = processor.FourOmicsDataset(train_first_X, train_first_X, train_second_X, train_second_X)
     train_dataloader = DataLoader(train_dataset, batch_size=model_config["batch_size"])
-    test_dataset = processor.TwoOmicsDataset(test_first_X, test_second_X)
+    test_dataset = processor.FourOmicsDataset(test_first_X, test_first_X, test_second_X, test_second_X)
     test_dataloader = DataLoader(test_dataset, batch_size=model_config["batch_size"])
     log.info("Data is preprocessed")
 
@@ -154,6 +154,13 @@ def evaluate(config: dict):
     run_dataset(test_dataloader, "Test", dataset["test_mod1"], dataset["test_mod2"])
 
 
+def get_batch_idx(dataset: ad.AnnData):
+    mapping = {item:i for (i, item) in enumerate(dataset.obs['batch'].cat.remove_unused_categories().unique())}
+    batch_idx = dataset.obs['batch'].cat.remove_unused_categories().apply(lambda x: mapping[x])
+    batch_idx = torch.tensor(batch_idx.to_numpy())
+    return batch_idx
+
+
 def train(config: dict):
     # Load data
     data_config = config["data"]
@@ -174,16 +181,19 @@ def train(config: dict):
     train_second_X, _ = second_processor.fit_transform(dataset["train_mod2"])
     test_second_X, second_inverse = second_processor.transform(dataset["test_mod2"])
 
+    train_batch_idx = get_batch_idx(dataset['train_mod1'])
+    test_batch_idx = get_batch_idx(dataset['test_mod1'])
+
     # Add input feature size
     model_config = config["model"]
     model_config["first_dims"].insert(0, train_first_X.shape[1])
     model_config["second_dims"].insert(0, train_second_X.shape[1])
 
-    train_dataset = processor.TwoOmicsDataset(train_first_X, train_second_X)
+    train_dataset = processor.FourOmicsDataset(train_first_X, train_first_X, train_second_X, train_second_X, train_batch_idx)
     train_dataloader = DataLoader(
         train_dataset, batch_size=model_config["batch_size"], shuffle=True
     )
-    test_dataset = processor.TwoOmicsDataset(test_first_X.cuda(), test_second_X.cuda())
+    test_dataset = processor.FourOmicsDataset(test_first_X.cuda(), test_first_X.cuda(), test_second_X.cuda(), test_second_X.cuda(), test_batch_idx)
     test_dataloader = DataLoader(test_dataset, batch_size=model_config["batch_size"])
     log.info("Data is preprocessed")
 
@@ -206,9 +216,9 @@ def train(config: dict):
     validation_callback = x_autoencoder.TargetCallback(
         test_dataloader=test_dataloader,
         first_inverse=first_inverse,
-        first_target=dataset["test_mod1"],
+        first_true_target=dataset["test_mod1"],
         second_inverse=second_inverse,
-        second_target=dataset["test_mod2"],
+        second_true_target=dataset["test_mod2"],
     )
 
     # Train model
@@ -224,6 +234,7 @@ def train(config: dict):
             validation_callback,
         ],
         deterministic=True,
+        checkpoint_callback=False,
     )
     trainer.fit(model, train_dataloaders=train_dataloader)
 

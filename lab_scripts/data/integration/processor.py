@@ -106,6 +106,22 @@ class TwoOmicsDataset(Dataset):
         return (self.first[idx], self.second[idx])
 
 
+class FourOmicsDataset(Dataset):
+    def __init__(self, first, first_target, second, second_target, batch_idx=None):
+        super().__init__()
+        self.first = first
+        self.first_target = first_target
+        self.second = second
+        self.second_target = second_target
+        self.batch_idx = batch_idx
+    
+    def __len__(self):
+        return self.first.shape[0]
+    
+    def __getitem__(self, idx):
+        return (self.first[idx], self.second[idx]), (self.first_target[idx], self.second_target[idx]), self.batch_idx[idx]
+
+
 def compare(lhs, rhs):
     lhs = np.ma.masked_array(lhs, lhs > 0.0)
     rhs = np.ma.masked_array(rhs, rhs > 0.0)
