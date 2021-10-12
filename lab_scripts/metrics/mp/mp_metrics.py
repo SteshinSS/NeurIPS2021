@@ -12,4 +12,6 @@ def calculate_target(y_pred: input_type, y: input_type):
         y_pred = utils.convert_to_dense(y_pred).X
     if isinstance(y, ad.AnnData):
         y = utils.convert_to_dense(y).X
+    if np.isnan(y_pred).any():
+        return np.NAN
     return np.sqrt(metrics.mean_squared_error(y_pred, y))
