@@ -24,7 +24,7 @@ model:
     encoder: [2000, 700, 500]
     decoder: [500, 700, 2000]
     activation: leaky_relu
-    loss: nb
+    loss: zinb
   second:
     encoder: [100, 100]
     decoder: [100, 100]

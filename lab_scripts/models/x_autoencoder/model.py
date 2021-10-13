@@ -8,9 +8,22 @@ from lab_scripts.metrics import mp
 from lab_scripts.utils import utils
 from torch import nn
 from torch.distributions.negative_binomial import NegativeBinomial
+from pyro.distributions.zero_inflated import ZeroInflatedNegativeBinomial
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("x_autoencoder")
+
+
+def zinb_loss(predicted_parameters, targets):
+    zinb_r, zinb_p, dropout = predicted_parameters
+    zinb_distribution = ZeroInflatedNegativeBinomial(zinb_r, probs=zinb_p, gate=dropout)
+    log_loss = zinb_distribution.log_prob(targets).mean()
+    return -log_loss
+
+def convert_zinb_parameters_to_mean(parameters):
+    zinb_r, zinb_p, dropout = parameters
+    zinb_distribution = ZeroInflatedNegativeBinomial(zinb_r, probs=zinb_p, gate=dropout)
+    return zinb_distribution.mean
 
 
 def nb_loss(predicted_parameters, targets):
@@ -31,6 +44,8 @@ def get_loss(loss_name: str):
         return nn.MSELoss()
     elif loss_name == "nb":
         return nb_loss
+    elif loss_name == 'zinb':
+        return zinb_loss
 
 
 def get_activation(activation_name: str):
@@ -98,12 +113,39 @@ class NBDecoder(pl.LightningModule):
         nb_p = torch.sigmoid(self.to_p(y))
         return nb_r, nb_p * 0.999
 
+class ZINBDecoder(pl.LightningModule):
+    def __init__(self, config: dict, latent_dim: int):
+        super().__init__()
+        dims = config["decoder"]
+        dims.insert(0, latent_dim)
+        activation = get_activation(config["activation"])
+
+        net = []
+        for i in range(len(dims) - 1):
+            net.append(nn.Linear(dims[i], dims[i + 1]))
+            net.append(activation)
+        self.net = nn.Sequential(*net)
+
+        self.to_r = nn.Linear(dims[-1], config["target_features"])
+        self.to_p = nn.Linear(dims[-1], config["target_features"])
+        self.to_dropout = nn.Linear(dims[-1], config["target_features"])
+
+    def forward(self, x):
+        eps = 1e-8
+        y = self.net(x)
+        nb_r = torch.exp(self.to_r(y)) + eps
+        nb_p = torch.sigmoid(self.to_p(y))
+        dropout = torch.sigmoid(self.to_dropout(y))
+        return nb_r, nb_p * 0.999, dropout
+
 
 def get_decoder(loss_name: str):
     if loss_name == "nb":
         return NBDecoder
     elif loss_name == "mse":
         return MSEDecoder
+    elif loss_name == 'zinb':
+        return ZINBDecoder
     else:
         raise NotImplementedError
 
@@ -195,8 +237,12 @@ class X_autoencoder(pl.LightningModule):
         second_to_first = result["second_to_first"]
         if self.second_config["loss"] == "nb":
             first_to_second = convert_nb_parameters_to_mean(first_to_second)
+        elif self.second_config['loss'] == "zinb":
+            first_to_second = convert_zinb_parameters_to_mean(first_to_second)
         if self.first_config["loss"] == "nb":
             second_to_first = convert_nb_parameters_to_mean(second_to_first)
+        elif self.first_config['loss'] == 'zinb':
+            second_to_first = convert_zinb_parameters_to_mean(second_to_first)
         return first_to_second, second_to_first
 
     def configure_optimizers(self):
