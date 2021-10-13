@@ -105,6 +105,11 @@ class TwoOmicsDataset(Dataset):
 
     def __getitem__(self, idx):
         return (self.first[idx], self.second[idx]), self.batch_idx[idx]
+    
+    def to(self, device):
+        self.first = self.first.to(device)
+        self.second = self.second.to(device)
+        self.batch_idx = self.batch_idx.to(device)
 
 
 class FourOmicsDataset(Dataset):
@@ -121,6 +126,13 @@ class FourOmicsDataset(Dataset):
     
     def __getitem__(self, idx):
         return (self.first[idx], self.second[idx]), (self.first_target[idx], self.second_target[idx]), self.batch_idx[idx]
+    
+    def to(self, device):
+        self.first = self.first.to(device)
+        self.first_target = self.first_target.to(device)
+        self.second = self.second.to(device)
+        self.second_target = self.second_target.to(device)
+        self.batch_idx = self.batch_idx.to(device)
 
 
 def compare(lhs, rhs):

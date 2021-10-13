@@ -4,6 +4,7 @@ from typing import Callable, List, Sequence
 import anndata as ad
 import pytorch_lightning as pl
 import torch
+from torch._C import device
 import torch.nn.functional as F
 from lab_scripts.metrics import mp
 from lab_scripts.utils import utils
@@ -13,15 +14,28 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("x_autoencoder")
 
 
+def get_loss(loss_name: str):
+    if loss_name == 'mse':
+        return nn.MSELoss()
+
+
+def get_activation(activation_name: str):
+    if activation_name == 'leaky_relu':
+        return nn.LeakyReLU()
+
+
 class Encoder(pl.LightningModule):
-    def __init__(self, dims: Sequence, activation, batch_norm_pos: int = None):
+    def __init__(self, config: dict, latent_dim: int):
         super().__init__()
+        dims = config['encoder']
+        dims.insert(0, config['input_features'])
+        dims.append(latent_dim)
+        activation = get_activation(config['activation'])
+
         net = []
         for i in range(len(dims) - 1):
             net.append(nn.Linear(dims[i], dims[i + 1]))
-            if i == batch_norm_pos:
-                net.append(nn.BatchNorm1d(dims[i + 1]))  # type: ignore
-            net.append(activation())
+            net.append(activation)  # type: ignore
         self.net = nn.Sequential(*net)
 
     def forward(self, x):
@@ -29,13 +43,18 @@ class Encoder(pl.LightningModule):
 
 
 class Decoder(pl.LightningModule):
-    def __init__(self, dims: Sequence, activation):
+    def __init__(self, config: dict, latent_dim: int):
         super().__init__()
+        dims = config['decoder']
+        dims.insert(0, latent_dim)
+        dims.append(config['target_features'])
+        activation = get_activation(config['activation'])
+
         net = []
         for i in range(len(dims) - 1):
             net.append(nn.Linear(dims[i], dims[i + 1]))
             if i + 1 != len(dims) - 1:
-                net.append(activation())
+                net.append(activation)
         self.net = nn.Sequential(*net)
 
     def forward(self, x):
@@ -46,27 +65,18 @@ class X_autoencoder(pl.LightningModule):
     def __init__(self, config: dict):
         super().__init__()
         self.lr = config["lr"]
-        self.loss = nn.MSELoss()
         self.use_mmd = config["use_mmd_loss"]
         self.mmd_lambda = config["mmd_lambda"]
-        if config["activation"] == "relu":
-            activation = nn.ReLU
-        elif config["activation"] == "leaky_relu":
-            activation = nn.LeakyReLU  # type: ignore
-        elif config["activation"] == "tanh":
-            activation = torch.nn.Tanh  # type: ignore
 
-        first_layer_dims = config["first_dims"]
-        first_layer_dims.append(config["latent_dim"])
-        log.info("First encoder dims: %s", str(first_layer_dims))
-        self.first_encoder = Encoder(first_layer_dims, activation, config["first_bn"])
-        self.first_decoder = Decoder(list(reversed(first_layer_dims)), activation)
+        first_config = config['first']
+        self.first_encoder = Encoder(first_config, config['latent_dim'])
+        self.first_decoder = Decoder(first_config, config['latent_dim'])
+        self.first_loss = get_loss(first_config['loss'])
 
-        second_layer_dims = config["second_dims"]
-        second_layer_dims.append(config["latent_dim"])
-        log.info("Second encoder dims: %s", str(second_layer_dims))
-        self.second_encoder = Encoder(second_layer_dims, activation)
-        self.second_decoder = Decoder(list(reversed(second_layer_dims)), activation)
+        second_config = config['second']
+        self.second_encoder = Encoder(second_config, config['latent_dim'])
+        self.second_decoder = Decoder(second_config, config['latent_dim'])
+        self.second_loss = get_loss(second_config['loss'])
 
     def forward(self, first, second):
         first_latent = self.first_encoder(first)
@@ -86,7 +96,7 @@ class X_autoencoder(pl.LightningModule):
             "second_to_second": second_to_second,
         }
         return result
-
+    
     def training_step(self, batch, _):
         if len(batch) == 2:
             inputs, batch_idx = batch
@@ -98,10 +108,10 @@ class X_autoencoder(pl.LightningModule):
 
         first_target, second_target = targets
         loss = 0.0
-        loss += self.loss(result["first_to_first"], first_target)
-        loss += self.loss(result["second_to_first"], first_target)
-        loss += self.loss(result["first_to_second"], second_target)
-        loss += self.loss(result["second_to_second"], second_target)
+        loss += self.first_loss(result["first_to_first"], first_target)
+        loss += self.first_loss(result["second_to_first"], first_target)
+        loss += self.second_loss(result["first_to_second"], second_target)
+        loss += self.second_loss(result["second_to_second"], second_target)
         if self.use_mmd:
             mmd_loss = calculate_mmd_loss(result["first_latent"], batch_idx)
             mmd_loss += calculate_mmd_loss(result["second_latent"], batch_idx)

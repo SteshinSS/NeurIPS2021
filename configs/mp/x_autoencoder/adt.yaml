@@ -1,0 +1,37 @@
+data: 
+  dataset_name: mp/official/gex_to_adt
+  task_type: gex_to_adt
+  mod1:
+    name: gex
+    inputs:
+      use_normalized: True
+      scale: True
+    targets:
+      use_normalized: True
+      scale: True
+  mod2:
+    name: adt
+    inputs:
+      use_normalized: True
+      scale: True
+    targets:
+      use_normalized: True
+      scale: True
+
+
+model:
+  first:
+    encoder: [2000, 700, 500]
+    decoder: [500, 700, 2000]
+    activation: leaky_relu
+    loss: mse
+  second:
+    encoder: [100, 100]
+    decoder: [100, 100]
+    activation: leaky_relu
+    loss: mse
+  latent_dim: 300
+  lr: 0.001
+  batch_size: 128
+  use_mmd_loss: False
+  mmd_lambda: 0.1

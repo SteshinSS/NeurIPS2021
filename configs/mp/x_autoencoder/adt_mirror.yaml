@@ -1,9 +1,12 @@
 data: 
   dataset_name: mp/official/gex_to_adt
+  task_type: gex_to_adt
   mod1:
+    name: gex
     use_normalized: True
     scale: True
   mod2:
+    name: adt
     use_normalized: True
     scale: True
 
