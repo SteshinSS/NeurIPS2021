@@ -94,16 +94,17 @@ class Processor:
 
 
 class TwoOmicsDataset(Dataset):
-    def __init__(self, first: torch.Tensor, second: torch.Tensor):
+    def __init__(self, first: torch.Tensor, second: torch.Tensor, batch_idx):
         super().__init__()
         self.first = first
         self.second = second
+        self.batch_idx = batch_idx
 
     def __len__(self):
         return self.first.shape[0]
 
     def __getitem__(self, idx):
-        return (self.first[idx], self.second[idx])
+        return (self.first[idx], self.second[idx]), self.batch_idx[idx]
 
 
 class FourOmicsDataset(Dataset):

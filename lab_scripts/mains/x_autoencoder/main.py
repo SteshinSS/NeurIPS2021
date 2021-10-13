@@ -4,6 +4,7 @@ import pickle
 
 import anndata as ad
 import pytorch_lightning as pl
+import numpy as np
 import torch
 import yaml  # type: ignore
 from lab_scripts.data import dataloader
@@ -157,7 +158,9 @@ def evaluate(config: dict):
 def get_batch_idx(dataset: ad.AnnData):
     mapping = {item:i for (i, item) in enumerate(dataset.obs['batch'].cat.remove_unused_categories().unique())}
     batch_idx = dataset.obs['batch'].cat.remove_unused_categories().apply(lambda x: mapping[x])
-    batch_idx = torch.tensor(batch_idx.to_numpy())
+    batch_idx = batch_idx.to_numpy()
+    # np.random.shuffle(batch_idx)
+    batch_idx = torch.tensor(batch_idx)
     return batch_idx
 
 
@@ -189,11 +192,13 @@ def train(config: dict):
     model_config["first_dims"].insert(0, train_first_X.shape[1])
     model_config["second_dims"].insert(0, train_second_X.shape[1])
 
-    train_dataset = processor.FourOmicsDataset(train_first_X, train_first_X, train_second_X, train_second_X, train_batch_idx)
+    #train_dataset = processor.FourOmicsDataset(train_first_X, train_first_X, train_second_X, train_second_X, train_batch_idx)
+    train_dataset = processor.TwoOmicsDataset(train_first_X, train_second_X, train_batch_idx)
     train_dataloader = DataLoader(
-        train_dataset, batch_size=model_config["batch_size"], shuffle=True
+        train_dataset, batch_size=model_config["batch_size"], shuffle=True, pin_memory=True, num_workers=1,
     )
-    test_dataset = processor.FourOmicsDataset(test_first_X.cuda(), test_first_X.cuda(), test_second_X.cuda(), test_second_X.cuda(), test_batch_idx)
+    #test_dataset = processor.FourOmicsDataset(test_first_X.cuda(), test_first_X.cuda(), test_second_X.cuda(), test_second_X.cuda(), test_batch_idx)
+    test_dataset = processor.TwoOmicsDataset(test_first_X.cuda(), test_second_X.cuda(), test_batch_idx)
     test_dataloader = DataLoader(test_dataset, batch_size=model_config["batch_size"])
     log.info("Data is preprocessed")
 
@@ -235,6 +240,7 @@ def train(config: dict):
         ],
         deterministic=True,
         checkpoint_callback=False,
+        gradient_clip_val=2.0,
     )
     trainer.fit(model, train_dataloaders=train_dataloader)
 

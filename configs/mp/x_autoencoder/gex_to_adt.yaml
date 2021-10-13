@@ -10,10 +10,11 @@ data:
 
 model:
   first_dims: [2000, 700, 500]
+  first_bn: -1
   second_dims: [100, 100]
   latent_dim: 300
-  activation: selu
-  lr: 0.0005
-  batch_size: 256
-  use_mmd_loss: True
+  activation: leaky_relu
+  lr: 0.001
+  batch_size: 128
+  use_mmd_loss: False
   mmd_lambda: 0.1
