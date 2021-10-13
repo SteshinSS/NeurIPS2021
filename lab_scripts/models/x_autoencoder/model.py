@@ -1,36 +1,50 @@
 import logging
-from typing import Callable, List, Sequence
+from typing import Callable, List
 
 import anndata as ad
 import pytorch_lightning as pl
 import torch
-from torch._C import device
-import torch.nn.functional as F
 from lab_scripts.metrics import mp
 from lab_scripts.utils import utils
 from torch import nn
+from torch.distributions.negative_binomial import NegativeBinomial
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("x_autoencoder")
 
 
+def nb_loss(predicted_parameters, targets):
+    nb_r, nb_p = predicted_parameters
+    nb_distribution = NegativeBinomial(nb_r, nb_p)
+    log_loss = nb_distribution.log_prob(targets).mean()
+    return -log_loss
+
+
+def convert_nb_parameters_to_mean(parameters):
+    nb_r, nb_p = parameters
+    nb_distribution = NegativeBinomial(nb_r, nb_p)
+    return nb_distribution.mean
+
+
 def get_loss(loss_name: str):
-    if loss_name == 'mse':
+    if loss_name == "mse":
         return nn.MSELoss()
+    elif loss_name == "nb":
+        return nb_loss
 
 
 def get_activation(activation_name: str):
-    if activation_name == 'leaky_relu':
+    if activation_name == "leaky_relu":
         return nn.LeakyReLU()
 
 
 class Encoder(pl.LightningModule):
     def __init__(self, config: dict, latent_dim: int):
         super().__init__()
-        dims = config['encoder']
-        dims.insert(0, config['input_features'])
+        dims = config["encoder"]
+        dims.insert(0, config["input_features"])
         dims.append(latent_dim)
-        activation = get_activation(config['activation'])
+        activation = get_activation(config["activation"])
 
         net = []
         for i in range(len(dims) - 1):
@@ -42,13 +56,13 @@ class Encoder(pl.LightningModule):
         return self.net(x)
 
 
-class Decoder(pl.LightningModule):
+class MSEDecoder(pl.LightningModule):
     def __init__(self, config: dict, latent_dim: int):
         super().__init__()
-        dims = config['decoder']
+        dims = config["decoder"]
         dims.insert(0, latent_dim)
-        dims.append(config['target_features'])
-        activation = get_activation(config['activation'])
+        dims.append(config["target_features"])
+        activation = get_activation(config["activation"])
 
         net = []
         for i in range(len(dims) - 1):
@@ -61,6 +75,39 @@ class Decoder(pl.LightningModule):
         return self.net(x)
 
 
+class NBDecoder(pl.LightningModule):
+    def __init__(self, config: dict, latent_dim: int):
+        super().__init__()
+        dims = config["decoder"]
+        dims.insert(0, latent_dim)
+        activation = get_activation(config["activation"])
+
+        net = []
+        for i in range(len(dims) - 1):
+            net.append(nn.Linear(dims[i], dims[i + 1]))
+            net.append(activation)
+        self.net = nn.Sequential(*net)
+
+        self.to_r = nn.Linear(dims[-1], config["target_features"])
+        self.to_p = nn.Linear(dims[-1], config["target_features"])
+
+    def forward(self, x):
+        eps = 1e-8
+        y = self.net(x)
+        nb_r = torch.exp(self.to_r(y)) + eps
+        nb_p = torch.sigmoid(self.to_p(y))
+        return nb_r, nb_p * 0.999
+
+
+def get_decoder(loss_name: str):
+    if loss_name == "nb":
+        return NBDecoder
+    elif loss_name == "mse":
+        return MSEDecoder
+    else:
+        raise NotImplementedError
+
+
 class X_autoencoder(pl.LightningModule):
     def __init__(self, config: dict):
         super().__init__()
@@ -68,15 +115,21 @@ class X_autoencoder(pl.LightningModule):
         self.use_mmd = config["use_mmd_loss"]
         self.mmd_lambda = config["mmd_lambda"]
 
-        first_config = config['first']
-        self.first_encoder = Encoder(first_config, config['latent_dim'])
-        self.first_decoder = Decoder(first_config, config['latent_dim'])
-        self.first_loss = get_loss(first_config['loss'])
+        first_config = config["first"]
+        self.first_config = first_config
+        self.first_loss = get_loss(first_config["loss"])
+        self.first_encoder = Encoder(first_config, config["latent_dim"])
+        self.first_decoder = get_decoder(first_config["loss"])(
+            first_config, config["latent_dim"]
+        )
 
-        second_config = config['second']
-        self.second_encoder = Encoder(second_config, config['latent_dim'])
-        self.second_decoder = Decoder(second_config, config['latent_dim'])
-        self.second_loss = get_loss(second_config['loss'])
+        second_config = config["second"]
+        self.second_config = second_config
+        self.second_loss = get_loss(second_config["loss"])
+        self.second_encoder = Encoder(second_config, config["latent_dim"])
+        self.second_decoder = get_decoder(second_config["loss"])(
+            second_config, config["latent_dim"]
+        )
 
     def forward(self, first, second):
         first_latent = self.first_encoder(first)
@@ -96,7 +149,7 @@ class X_autoencoder(pl.LightningModule):
             "second_to_second": second_to_second,
         }
         return result
-    
+
     def training_step(self, batch, _):
         if len(batch) == 2:
             inputs, batch_idx = batch
@@ -105,7 +158,11 @@ class X_autoencoder(pl.LightningModule):
             inputs, targets, batch_idx = batch
         first, second = inputs
         result = self(first, second)
+        loss = self.calculate_loss(result, targets, batch_idx)
+        self.log("train_loss", loss, on_step=True, prog_bar=False, logger=True)
+        return loss
 
+    def calculate_loss(self, result: dict, targets, batch_idx):
         first_target, second_target = targets
         loss = 0.0
         loss += self.first_loss(result["first_to_first"], first_target)
@@ -125,7 +182,6 @@ class X_autoencoder(pl.LightningModule):
                 prog_bar=True,
                 logger=True,
             )
-        self.log("train_loss", loss, on_step=True, prog_bar=False, logger=True)
         return loss
 
     def predict_step(self, batch, _):
@@ -135,7 +191,13 @@ class X_autoencoder(pl.LightningModule):
             inputs, _, _ = batch
         first, second = inputs
         result = self(first, second)
-        return result["first_to_second"], result["second_to_first"]
+        first_to_second = result["first_to_second"]
+        second_to_first = result["second_to_first"]
+        if self.second_config["loss"] == "nb":
+            first_to_second = convert_nb_parameters_to_mean(first_to_second)
+        if self.first_config["loss"] == "nb":
+            second_to_first = convert_nb_parameters_to_mean(second_to_first)
+        return first_to_second, second_to_first
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
@@ -166,6 +228,7 @@ def calculate_metric(
     """
     predictions = torch.cat(raw_predictions, dim=0).cpu().detach()
     predictions = inverse_transform(predictions)
+
     return mp.calculate_target(predictions, target_dataset)
 
 
@@ -196,7 +259,9 @@ class TargetCallback(pl.Callback):
 
         if self.second_inverse is not None:
             metric = calculate_metric(
-                first_to_second, self.second_inverse, self.second_true_target
+                first_to_second,
+                self.second_inverse,
+                self.second_true_target,
             )
             pl_module.log("true_1_to_2", metric, prog_bar=True)
 
@@ -230,7 +295,7 @@ def mmd_for_two_batches(first, second):
         return result
     for first_row in first:
         diff = second - first_row
-        dist = ((diff ** 2).sum(axis=1)) # **(0.5)
+        dist = (diff ** 2).sum(axis=1)  # **(0.5)
         result += dist.sum()
         # result += (diff ** 2).sum()  # squared distance between first_row and each row
     result = result / (first.shape[0] * second.shape[0])

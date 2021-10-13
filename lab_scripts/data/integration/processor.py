@@ -1,8 +1,7 @@
-from typing import Optional, no_type_check
+from typing import no_type_check
 
 import anndata as ad
 import numpy as np
-import pandas as pd
 import scanpy as sc
 import torch
 from sklearn.preprocessing import StandardScaler
@@ -49,7 +48,7 @@ class Processor:
             size_factors = np.expand_dims(size_factors, axis=-1)
             args['size_factors'] = size_factors
         inverse_transform = self._get_inverse_transform(args)
-        return torch.tensor(matrix, dtype=torch.float32), inverse_transform
+        return torch.tensor(matrix), inverse_transform
 
     def fit_transform(self, dataset: ad.AnnData):
         self.fit(dataset)
@@ -88,9 +87,9 @@ class Processor:
 
     def _get_matrix(self, dataset: ad.AnnData):
         if self.use_normalized:
-            return dataset.X.toarray()
+            return dataset.X.toarray().astype(np.float32)
         else:
-            return dataset.layers["counts"].toarray()
+            return dataset.layers["counts"].toarray().astype(np.int32)
 
 
 class TwoOmicsDataset(Dataset):

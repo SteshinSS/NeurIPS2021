@@ -192,7 +192,7 @@ def train(config: dict):
         ],
         deterministic=True,
         checkpoint_callback=False,
-        gradient_clip_val=2.0,
+        gradient_clip_val=model_config['gradient_clip'],
     )
     trainer.fit(model, train_dataloaders=train_dataloader)
 
