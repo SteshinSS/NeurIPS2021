@@ -4,6 +4,7 @@ from typing import Callable, List
 import anndata as ad
 import pytorch_lightning as pl
 import torch
+from torch.nn import functional as F
 from lab_scripts.metrics import mp
 from lab_scripts.utils import utils
 from torch import nn
@@ -107,9 +108,9 @@ class NBDecoder(pl.LightningModule):
         self.to_p = nn.Linear(dims[-1], config["target_features"])
 
     def forward(self, x):
-        eps = 1e-8
+        eps = 1e-3
         y = self.net(x)
-        nb_r = torch.exp(self.to_r(y)) + eps
+        nb_r = F.relu(self.to_r(y)) + eps
         nb_p = torch.sigmoid(self.to_p(y))
         return nb_r, nb_p * 0.999
 
@@ -131,7 +132,7 @@ class ZINBDecoder(pl.LightningModule):
         self.to_dropout = nn.Linear(dims[-1], config["target_features"])
 
     def forward(self, x):
-        eps = 1e-8
+        eps = 1e-3
         y = self.net(x)
         nb_r = torch.exp(self.to_r(y)) + eps
         nb_p = torch.sigmoid(self.to_p(y))
@@ -156,6 +157,7 @@ class X_autoencoder(pl.LightningModule):
         self.lr = config["lr"]
         self.use_mmd = config["use_mmd_loss"]
         self.mmd_lambda = config["mmd_lambda"]
+        self.patience = config['patience']
 
         first_config = config["first"]
         self.first_config = first_config
@@ -172,6 +174,10 @@ class X_autoencoder(pl.LightningModule):
         self.second_decoder = get_decoder(second_config["loss"])(
             second_config, config["latent_dim"]
         )
+
+        first_to_second = config["first_to_second"]
+        self.first_weight = first_to_second / (1 + first_to_second)
+        self.second_weight = 1 / (1 + first_to_second)
 
     def forward(self, first, second):
         first_latent = self.first_encoder(first)
@@ -207,10 +213,10 @@ class X_autoencoder(pl.LightningModule):
     def calculate_loss(self, result: dict, targets, batch_idx):
         first_target, second_target = targets
         loss = 0.0
-        loss += self.first_loss(result["first_to_first"], first_target)
-        loss += self.first_loss(result["second_to_first"], first_target)
-        loss += self.second_loss(result["first_to_second"], second_target)
-        loss += self.second_loss(result["second_to_second"], second_target)
+        loss += self.first_loss(result["first_to_first"], first_target) * self.first_weight
+        loss += self.first_loss(result["second_to_first"], first_target) * self.first_weight
+        loss += self.second_loss(result["first_to_second"], second_target) * self.second_weight
+        loss += self.second_loss(result["second_to_second"], second_target) * self.second_weight
         if self.use_mmd:
             mmd_loss = calculate_mmd_loss(result["first_latent"], batch_idx)
             mmd_loss += calculate_mmd_loss(result["second_latent"], batch_idx)
@@ -248,7 +254,7 @@ class X_autoencoder(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
         lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, factor=0.2, patience=50, verbose=True
+            optimizer, factor=0.2, patience=self.patience, verbose=True
         )
         return {
             "optimizer": optimizer,

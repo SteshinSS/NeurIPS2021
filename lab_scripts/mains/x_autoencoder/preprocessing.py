@@ -244,6 +244,10 @@ def preprocess_data(config: dict, dataset, batch_size, is_train):
     second_train, second_test, second_input_features, second_target_features = preprocess_one_dataset(
         config["mod2"], dataset["train_mod2"], dataset["test_mod2"], config["task_type"], is_train
     )
+    if torch.cuda.is_available():
+        cuda = True
+    else:
+        cuda = False
     is_first_mirror = "inputs" not in config["mod1"]
     is_second_mirror = "inputs" not in config["mod2"]
     if is_first_mirror and is_second_mirror:
@@ -263,14 +267,14 @@ def preprocess_data(config: dict, dataset, batch_size, is_train):
         )
         test_dataset = FourOmicsDataset(*test_arguments)
     
-    if torch.cuda.is_available():
+    if cuda:
         test_dataset.to('cuda')
     
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
-        pin_memory=True,
+        pin_memory=cuda,
         num_workers=1,
     )
     test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)

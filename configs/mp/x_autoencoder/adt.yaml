@@ -24,7 +24,7 @@ model:
     encoder: [2000, 700, 500]
     decoder: [500, 700, 2000]
     activation: leaky_relu
-    loss: zinb
+    loss: nb
   second:
     encoder: [100, 100]
     decoder: [100, 100]
@@ -34,5 +34,7 @@ model:
   lr: 0.001
   batch_size: 128
   use_mmd_loss: False
-  mmd_lambda: 0.1
+  mmd_lambda: 0.01
   gradient_clip: 2.0
+  first_to_second: 1.0
+  patience: 10
