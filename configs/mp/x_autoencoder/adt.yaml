@@ -4,19 +4,23 @@ data:
   mod1:
     name: gex
     inputs:
-      use_normalized: True
+      use_normalized: False
       scale: True
+      type: float
     targets:
       use_normalized: False
       scale: False
+      type: int
   mod2:
     name: adt
     inputs:
-      use_normalized: True
+      use_normalized: False
       scale: True
+      type: float
     targets:
-      use_normalized: True
-      scale: True
+      use_normalized: False
+      scale: False
+      type: int
 
 
 model:
@@ -29,12 +33,12 @@ model:
     encoder: [100, 100]
     decoder: [100, 100]
     activation: leaky_relu
-    loss: mse
+    loss: nb
   latent_dim: 300
-  lr: 0.001
+  lr: 0.0007
   batch_size: 128
   use_mmd_loss: False
   mmd_lambda: 0.01
   gradient_clip: 2.0
   first_to_second: 1.0
-  patience: 10
+  patience: 5

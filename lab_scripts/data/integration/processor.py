@@ -5,6 +5,7 @@ import numpy as np
 import scanpy as sc
 import torch
 from sklearn.preprocessing import StandardScaler
+from lab_scripts.data.preprocessing.common.adt_normalization import CLR_transform
 from torch.utils.data import Dataset
 
 
@@ -18,6 +19,13 @@ class Processor:
         self.use_normalized = config.get("use_normalized", None)
         self.scale = config.get("scale", None)
         self.mod = mod
+        type = config['type']
+        if type == 'float':
+            self.type = np.float32
+        elif type == 'int':
+            self.type = np.int32  # type: ignore
+        else:
+            raise NotImplementedError()
         self.fitted = False
 
     def fit(self, dataset: ad.AnnData):
@@ -64,6 +72,8 @@ class Processor:
                 if f.mod == "gex":
                     matrix = matrix / f.size_factors
                     matrix = np.log(matrix + 1)
+                elif f.mod == "adt":
+                    matrix = CLR_transform(matrix)
                 else:
                     raise NotImplementedError()
             return matrix
@@ -87,9 +97,9 @@ class Processor:
 
     def _get_matrix(self, dataset: ad.AnnData):
         if self.use_normalized:
-            return dataset.X.toarray().astype(np.float32)
+            return dataset.X.toarray().astype(self.type)
         else:
-            return dataset.layers["counts"].toarray().astype(np.int32)
+            return dataset.layers["counts"].toarray().astype(self.type)
 
 
 class TwoOmicsDataset(Dataset):
