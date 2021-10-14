@@ -26,19 +26,22 @@ data:
 model:
   first:
     encoder: [2000, 700, 500]
+    encoder_bn: [1]
     decoder: [500, 700, 2000]
     activation: leaky_relu
     loss: nb
   second:
     encoder: [100, 100]
+    encoder_bn: [0]
     decoder: [100, 100]
     activation: leaky_relu
     loss: nb
   latent_dim: 300
-  lr: 0.0007
+  lr: 0.001
   batch_size: 128
-  use_mmd_loss: False
-  mmd_lambda: 0.01
+  use_mmd_loss: True
+  mmd_lambda: 0.0001
   gradient_clip: 2.0
   first_to_second: 1.0
-  patience: 5
+  patience: 15
+  vae: True

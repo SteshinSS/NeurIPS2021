@@ -21,6 +21,7 @@ def zinb_loss(predicted_parameters, targets):
     log_loss = zinb_distribution.log_prob(targets).mean()
     return -log_loss
 
+
 def convert_zinb_parameters_to_mean(parameters):
     zinb_r, zinb_p, dropout = parameters
     zinb_distribution = ZeroInflatedNegativeBinomial(zinb_r, probs=zinb_p, gate=dropout)
@@ -45,7 +46,7 @@ def get_loss(loss_name: str):
         return nn.MSELoss()
     elif loss_name == "nb":
         return nb_loss
-    elif loss_name == 'zinb':
+    elif loss_name == "zinb":
         return zinb_loss
 
 
@@ -70,6 +71,49 @@ class Encoder(pl.LightningModule):
 
     def forward(self, x):
         return self.net(x)
+
+
+class VAEEncoder(pl.LightningModule):
+    def __init__(self, config: dict, latent_dim: int):
+        super().__init__()
+        dims = config["encoder"]
+        dims.insert(0, config["input_features"])
+        activation = get_activation(config["activation"])
+        batch_norm_pos = config['encoder_bn']
+
+        net = []
+        for i in range(len(dims) - 1):
+            net.append(nn.Linear(dims[i], dims[i + 1]))
+            net.append(activation)  # type: ignore
+            if i - 1 in batch_norm_pos:
+                net.append(nn.BatchNorm1d(dims[i + 1]))
+        self.net = nn.Sequential(*net)
+
+        self.to_mean = nn.Linear(dims[-1], latent_dim)
+        self.to_var = nn.Linear(dims[-1], latent_dim)
+
+    def forward(self, x):
+        y = self.net(x)
+        mu = self.to_mean(y)
+        logvar = self.to_var(y)
+        self.kl_loss = self.calculate_kl_loss(mu, logvar)
+        z = self.reparameterize(mu, logvar)
+        return z
+
+    def reparameterize(self, mu, logvar):
+        eps = torch.randn_like(logvar)
+        return mu + torch.exp(0.5 * logvar) * eps
+
+    def calculate_kl_loss(self, mu, logvar):
+        kl_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+        return kl_loss / torch.numel(mu)
+
+
+def get_encoder(is_vae: bool):
+    if is_vae:
+        return VAEEncoder
+    else:
+        return Encoder
 
 
 class MSEDecoder(pl.LightningModule):
@@ -114,6 +158,7 @@ class NBDecoder(pl.LightningModule):
         nb_p = torch.sigmoid(self.to_p(y))
         return nb_r, nb_p * 0.999
 
+
 class ZINBDecoder(pl.LightningModule):
     def __init__(self, config: dict, latent_dim: int):
         super().__init__()
@@ -134,10 +179,10 @@ class ZINBDecoder(pl.LightningModule):
     def forward(self, x):
         eps = 1e-3
         y = self.net(x)
-        nb_r = torch.exp(self.to_r(y)) + eps
+        nb_r = F.relu(self.to_r(y)) + eps
         nb_p = torch.sigmoid(self.to_p(y))
         dropout = torch.sigmoid(self.to_dropout(y))
-        return nb_r, nb_p * 0.999, dropout
+        return nb_r, nb_p * 0.999, dropout * 0.999
 
 
 def get_decoder(loss_name: str):
@@ -145,7 +190,7 @@ def get_decoder(loss_name: str):
         return NBDecoder
     elif loss_name == "mse":
         return MSEDecoder
-    elif loss_name == 'zinb':
+    elif loss_name == "zinb":
         return ZINBDecoder
     else:
         raise NotImplementedError
@@ -157,12 +202,13 @@ class X_autoencoder(pl.LightningModule):
         self.lr = config["lr"]
         self.use_mmd = config["use_mmd_loss"]
         self.mmd_lambda = config["mmd_lambda"]
-        self.patience = config['patience']
+        self.patience = config["patience"]
+        self.vae = config["vae"]
 
         first_config = config["first"]
         self.first_config = first_config
         self.first_loss = get_loss(first_config["loss"])
-        self.first_encoder = Encoder(first_config, config["latent_dim"])
+        self.first_encoder = get_encoder(self.vae)(first_config, config["latent_dim"])
         self.first_decoder = get_decoder(first_config["loss"])(
             first_config, config["latent_dim"]
         )
@@ -170,7 +216,7 @@ class X_autoencoder(pl.LightningModule):
         second_config = config["second"]
         self.second_config = second_config
         self.second_loss = get_loss(second_config["loss"])
-        self.second_encoder = Encoder(second_config, config["latent_dim"])
+        self.second_encoder = get_encoder(self.vae)(second_config, config["latent_dim"])
         self.second_decoder = get_decoder(second_config["loss"])(
             second_config, config["latent_dim"]
         )
@@ -213,10 +259,22 @@ class X_autoencoder(pl.LightningModule):
     def calculate_loss(self, result: dict, targets, batch_idx):
         first_target, second_target = targets
         loss = 0.0
-        loss += self.first_loss(result["first_to_first"], first_target) * self.first_weight
-        loss += self.first_loss(result["second_to_first"], first_target) * self.first_weight
-        loss += self.second_loss(result["first_to_second"], second_target) * self.second_weight
-        loss += self.second_loss(result["second_to_second"], second_target) * self.second_weight
+        first_to_first = self.first_loss(result["first_to_first"], first_target) * self.first_weight
+        self.log("11", first_to_first, on_step=True, on_epoch=False, prog_bar=True, logger=True)
+        loss += first_to_first
+
+        second_to_first = self.first_loss(result["second_to_first"], first_target) * self.first_weight
+        self.log("21", second_to_first, on_step=True, on_epoch=False, prog_bar=True, logger=True)
+        loss += second_to_first
+
+        first_to_second = self.second_loss(result["first_to_second"], second_target) * self.second_weight
+        self.log("12", first_to_second, on_step=True, on_epoch=False, prog_bar=True, logger=True)
+        loss += first_to_second
+
+        second_to_second = self.second_loss(result["second_to_second"], second_target) * self.second_weight
+        self.log("22", second_to_second, on_step=True, on_epoch=False, prog_bar=True, logger=True)
+        loss += second_to_second
+
         if self.use_mmd:
             mmd_loss = calculate_mmd_loss(result["first_latent"], batch_idx)
             mmd_loss += calculate_mmd_loss(result["second_latent"], batch_idx)
@@ -230,6 +288,10 @@ class X_autoencoder(pl.LightningModule):
                 prog_bar=True,
                 logger=True,
             )
+        if self.vae:
+            kl_loss = self.first_encoder.kl_loss + self.second_encoder.kl_loss
+            self.log("kl", kl_loss, on_step=True, on_epoch=False, prog_bar=True, logger=True)
+            loss += kl_loss
         return loss
 
     def predict_step(self, batch, _):
@@ -243,11 +305,11 @@ class X_autoencoder(pl.LightningModule):
         second_to_first = result["second_to_first"]
         if self.second_config["loss"] == "nb":
             first_to_second = convert_nb_parameters_to_mean(first_to_second)
-        elif self.second_config['loss'] == "zinb":
+        elif self.second_config["loss"] == "zinb":
             first_to_second = convert_zinb_parameters_to_mean(first_to_second)
         if self.first_config["loss"] == "nb":
             second_to_first = convert_nb_parameters_to_mean(second_to_first)
-        elif self.first_config['loss'] == 'zinb':
+        elif self.first_config["loss"] == "zinb":
             second_to_first = convert_zinb_parameters_to_mean(second_to_first)
         return first_to_second, second_to_first
 
