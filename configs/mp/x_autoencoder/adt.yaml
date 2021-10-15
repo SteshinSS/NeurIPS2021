@@ -37,7 +37,7 @@ model:
     activation: leaky_relu
     loss: nb
   latent_dim: 300
-  lr: 0.001
+  lr: 0.003
   batch_size: 128
   use_mmd_loss: True
   mmd_lambda: 0.0001

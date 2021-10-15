@@ -86,7 +86,7 @@ class VAEEncoder(pl.LightningModule):
             net.append(nn.Linear(dims[i], dims[i + 1]))
             net.append(activation)  # type: ignore
             if i - 1 in batch_norm_pos:
-                net.append(nn.BatchNorm1d(dims[i + 1]))
+                net.append(nn.BatchNorm1d(dims[i + 1]))  # type: ignore
         self.net = nn.Sequential(*net)
 
         self.to_mean = nn.Linear(dims[-1], latent_dim)

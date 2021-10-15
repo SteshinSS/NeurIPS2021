@@ -7,7 +7,11 @@ import torch
 import yaml  # type: ignore
 from lab_scripts.data import dataloader
 from lab_scripts.mains.x_autoencoder import preprocessing
-from lab_scripts.mains.x_autoencoder.preprocessing import base_checkpoint_path, base_config_path
+from lab_scripts.mains.x_autoencoder.preprocessing import (
+    base_checkpoint_path,
+    base_config_path,
+)
+from lab_scripts.mains.x_autoencoder import tune
 from lab_scripts.models import x_autoencoder
 from lab_scripts.utils import utils
 from pytorch_lightning.loggers import WandbLogger
@@ -74,10 +78,11 @@ def evaluate(config: dict):
     task_type = utils.get_task_type(first_mod, second_mod)
     log.info("Data is loaded")
 
-
     # Preprocess data
     model_config = config["model"]
-    preprocessed_data = preprocessing.preprocess_data(data_config, dataset, model_config["batch_size"], is_train=False)
+    preprocessed_data = preprocessing.preprocess_data(
+        data_config, dataset, model_config["batch_size"], is_train=False
+    )
 
     train_dataloader = preprocessed_data["train_dataloader"]
     first_train_inverse = preprocessed_data["first_train_inverse"]
@@ -88,11 +93,17 @@ def evaluate(config: dict):
     second_test_inverse = preprocessed_data["second_test_inverse"]
 
     # Add input feature size
-    model_config['first']['input_features'] = preprocessed_data['first_input_features']
-    model_config['first']['target_features'] = preprocessed_data['first_target_features']
-    model_config['second']['input_features'] = preprocessed_data['second_input_features']
-    model_config['second']['target_features'] = preprocessed_data['second_target_features']
-    
+    model_config["first"]["input_features"] = preprocessed_data["first_input_features"]
+    model_config["first"]["target_features"] = preprocessed_data[
+        "first_target_features"
+    ]
+    model_config["second"]["input_features"] = preprocessed_data[
+        "second_input_features"
+    ]
+    model_config["second"]["target_features"] = preprocessed_data[
+        "second_target_features"
+    ]
+
     log.info("Data is preprocessed")
 
     # Load model
@@ -113,7 +124,9 @@ def evaluate(config: dict):
     trainer = pl.Trainer(gpus=use_gpu, logger=False)
 
     # Run predictions
-    def run_dataset(dataloader, name, first_target, first_inverse, second_target, second_inverse):
+    def run_dataset(
+        dataloader, name, first_target, first_inverse, second_target, second_inverse
+    ):
         predictions = trainer.predict(model, dataloader)
         first_to_second = []
         second_to_first = []
@@ -127,8 +140,22 @@ def evaluate(config: dict):
             f"{name} {second_mod} to {first_mod} metric: {x_autoencoder.calculate_metric(second_to_first, first_inverse, first_target)}"
         )
 
-    run_dataset(train_dataloader, "Train", dataset["train_mod1"], first_train_inverse, dataset["train_mod2"], second_train_inverse)
-    run_dataset(test_dataloader, "Test", dataset["test_mod1"], first_test_inverse, dataset["test_mod2"],  second_test_inverse)
+    run_dataset(
+        train_dataloader,
+        "Train",
+        dataset["train_mod1"],
+        first_train_inverse,
+        dataset["train_mod2"],
+        second_train_inverse,
+    )
+    run_dataset(
+        test_dataloader,
+        "Test",
+        dataset["test_mod1"],
+        first_test_inverse,
+        dataset["test_mod2"],
+        second_test_inverse,
+    )
 
 
 def train(config: dict):
@@ -148,10 +175,16 @@ def train(config: dict):
     second_inverse = preprocessed_data["second_test_inverse"]
 
     # Add input layer sizes
-    model_config['first']['input_features'] = preprocessed_data['first_input_features']
-    model_config['first']['target_features'] = preprocessed_data['first_target_features']
-    model_config['second']['input_features'] = preprocessed_data['second_input_features']
-    model_config['second']['target_features'] = preprocessed_data['second_target_features']
+    model_config["first"]["input_features"] = preprocessed_data["first_input_features"]
+    model_config["first"]["target_features"] = preprocessed_data[
+        "first_target_features"
+    ]
+    model_config["second"]["input_features"] = preprocessed_data[
+        "second_input_features"
+    ]
+    model_config["second"]["target_features"] = preprocessed_data[
+        "second_target_features"
+    ]
     log.info("Data is preprocessed")
 
     # Configure training
@@ -174,6 +207,7 @@ def train(config: dict):
         )
 
     use_gpu = torch.cuda.is_available()
+
     if not use_gpu:
         log.warning("GPU is not detected.")
     use_gpu = int(use_gpu)  # type: ignore
@@ -192,14 +226,13 @@ def train(config: dict):
         ],
         deterministic=True,
         checkpoint_callback=False,
-        gradient_clip_val=model_config['gradient_clip'],
-
+        gradient_clip_val=model_config["gradient_clip"],
     )
     trainer.fit(model, train_dataloaders=train_dataloader)
 
     # Save model
     checkpoint_path = config.get(
-        "checkpoint_path", base_checkpoint_path + data_config['task_type'] + ".ckpt"
+        "checkpoint_path", base_checkpoint_path + data_config["task_type"] + ".ckpt"
     )
     trainer.save_checkpoint(checkpoint_path)
     log.info(f"Model is saved to {checkpoint_path}")
@@ -218,6 +251,8 @@ def get_parser():
     parser_train.add_argument("--wandb", action="store_true", default=False)
     parser_evaluate = subparsers.add_parser("evaluate")
     parser_evaluate.add_argument("config", type=argparse.FileType("r"))
+    parser_tune = subparsers.add_parser("tune")
+    parser_tune.add_argument("config", type=argparse.FileType("r"))
     return parser
 
 
@@ -234,8 +269,10 @@ def cli():
         train(config)
     elif args.action == "evaluate":
         evaluate(config)
+    elif args.action == "tune":
+        tune.tune_hp(config)
     else:
-        print("Enter command [train, evaluate]")
+        print("Enter command [train, evaluate, tune]")
 
 
 if __name__ == "__main__":
