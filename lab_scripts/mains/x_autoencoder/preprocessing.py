@@ -291,5 +291,7 @@ def preprocess_data(config: dict, dataset, batch_size, is_train):
         "second_test_inverse": second_test["inverse"],
         "second_input_features": second_input_features,
         "second_target_features": second_target_features,
+
+        'train_batch_idx': first_train['batch_idx'],
     }
     return result

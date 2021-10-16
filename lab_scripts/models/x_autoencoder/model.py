@@ -2,30 +2,34 @@ import logging
 from typing import Callable, List
 
 import anndata as ad
+from numpy import diff
 import pytorch_lightning as pl
 import torch
 from torch.nn import functional as F
 from lab_scripts.metrics import mp
 from lab_scripts.utils import utils
+import numpy as np
 from torch import nn
 from torch.distributions.negative_binomial import NegativeBinomial
 from pyro.distributions.zero_inflated import ZeroInflatedNegativeBinomial
+from torch.distributions.log_normal import LogNormal
+import wandb
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("x_autoencoder")
 
+def lognorm_loss(predictied_parameters, targets):
+    eps = 1e-6
+    loc, scale = predictied_parameters
+    exp_distribution = LogNormal(loc, scale)
+    exp_loss = exp_distribution.log_prob(targets + eps).mean()
+    return -exp_loss
 
 def zinb_loss(predicted_parameters, targets):
     zinb_r, zinb_p, dropout = predicted_parameters
     zinb_distribution = ZeroInflatedNegativeBinomial(zinb_r, probs=zinb_p, gate=dropout)
     log_loss = zinb_distribution.log_prob(targets).mean()
     return -log_loss
-
-
-def convert_zinb_parameters_to_mean(parameters):
-    zinb_r, zinb_p, dropout = parameters
-    zinb_distribution = ZeroInflatedNegativeBinomial(zinb_r, probs=zinb_p, gate=dropout)
-    return zinb_distribution.mean
 
 
 def nb_loss(predicted_parameters, targets):
@@ -35,12 +39,6 @@ def nb_loss(predicted_parameters, targets):
     return -log_loss
 
 
-def convert_nb_parameters_to_mean(parameters):
-    nb_r, nb_p = parameters
-    nb_distribution = NegativeBinomial(nb_r, nb_p)
-    return nb_distribution.mean
-
-
 def get_loss(loss_name: str):
     if loss_name == "mse":
         return nn.MSELoss()
@@ -48,11 +46,15 @@ def get_loss(loss_name: str):
         return nb_loss
     elif loss_name == "zinb":
         return zinb_loss
+    elif loss_name == 'lognorm':
+        return lognorm_loss
 
 
 def get_activation(activation_name: str):
     if activation_name == "leaky_relu":
         return nn.LeakyReLU()
+    elif activation_name == "tanh":
+        return nn.Tanh()
 
 
 class Encoder(pl.LightningModule):
@@ -67,6 +69,8 @@ class Encoder(pl.LightningModule):
         for i in range(len(dims) - 1):
             net.append(nn.Linear(dims[i], dims[i + 1]))
             net.append(activation)  # type: ignore
+            if i - 1 in config['dropout_pos']:
+                net.append(nn.Dropout(config['dropout']))  # type: ignore
         self.net = nn.Sequential(*net)
 
     def forward(self, x):
@@ -79,7 +83,7 @@ class VAEEncoder(pl.LightningModule):
         dims = config["encoder"]
         dims.insert(0, config["input_features"])
         activation = get_activation(config["activation"])
-        batch_norm_pos = config['encoder_bn']
+        batch_norm_pos = config["batchnorm_pos"]
 
         net = []
         for i in range(len(dims) - 1):
@@ -141,6 +145,7 @@ class NBDecoder(pl.LightningModule):
         dims = config["decoder"]
         dims.insert(0, latent_dim)
         activation = get_activation(config["activation"])
+        self.activation = activation
 
         net = []
         for i in range(len(dims) - 1):
@@ -148,15 +153,28 @@ class NBDecoder(pl.LightningModule):
             net.append(activation)
         self.net = nn.Sequential(*net)
 
-        self.to_r = nn.Linear(dims[-1], config["target_features"])
-        self.to_p = nn.Linear(dims[-1], config["target_features"])
+        self.to_r = self.create_last_sequential(dims[-1], config['target_features'], self.activation)
+        self.to_p = self.create_last_sequential(dims[-1], config['target_features'], self.activation)
 
     def forward(self, x):
-        eps = 1e-3
+        eps = 1e-6
         y = self.net(x)
-        nb_r = F.relu(self.to_r(y)) + eps
+        nb_r = F.softplus(self.to_r(y)) + eps
         nb_p = torch.sigmoid(self.to_p(y))
-        return nb_r, nb_p * 0.999
+        return nb_r, nb_p * (1 - eps)
+
+    def create_last_sequential(self, last_dim, target_features, activation):
+        sequential = nn.Sequential(
+            nn.Linear(last_dim, last_dim),
+            nn.Tanh(),
+            nn.Linear(last_dim, target_features),
+        )
+        return sequential
+    
+    def to_prediction(self, parameters):
+        nb_r, nb_p = parameters
+        nb_distribution = NegativeBinomial(nb_r, nb_p)
+        return nb_distribution.mean
 
 
 class ZINBDecoder(pl.LightningModule):
@@ -172,17 +190,72 @@ class ZINBDecoder(pl.LightningModule):
             net.append(activation)
         self.net = nn.Sequential(*net)
 
-        self.to_r = nn.Linear(dims[-1], config["target_features"])
-        self.to_p = nn.Linear(dims[-1], config["target_features"])
-        self.to_dropout = nn.Linear(dims[-1], config["target_features"])
+        self.to_r = self.create_last_sequential(
+            dims[-1], config["target_features"], activation
+        )
+        self.to_p = self.create_last_sequential(
+            dims[-1], config["target_features"], activation
+        )
+        self.to_dropout = self.create_last_sequential(
+            dims[-1], config["target_features"], activation
+        )
 
     def forward(self, x):
-        eps = 1e-3
+        eps = 1e-6
         y = self.net(x)
-        nb_r = F.relu(self.to_r(y)) + eps
+        nb_r = F.softplus(self.to_r(y)) + eps
         nb_p = torch.sigmoid(self.to_p(y))
         dropout = torch.sigmoid(self.to_dropout(y))
-        return nb_r, nb_p * 0.999, dropout * 0.999
+        return nb_r, nb_p * (1 - eps), dropout * (1 - eps)
+
+    def create_last_sequential(self, last_dim, target_features, activation):
+        sequential = nn.Sequential(
+            nn.Linear(last_dim, last_dim),
+            nn.Tanh(),
+            nn.Linear(last_dim, target_features),
+        )
+        return sequential
+    
+    def to_prediction(self, parameters):
+        zinb_r, zinb_p, dropout = parameters
+        zinb_distribution = ZeroInflatedNegativeBinomial(zinb_r, probs=zinb_p, gate=dropout)
+        return zinb_distribution.mean
+
+class LogNormDecoder(pl.LightningModule):
+    def __init__(self, config: dict, latent_dim: int):
+        super().__init__()
+        dims = config["decoder"]
+        dims.insert(0, latent_dim)
+        activation = get_activation(config["activation"])
+        self.activation = activation
+
+        net = []
+        for i in range(len(dims) - 1):
+            net.append(nn.Linear(dims[i], dims[i + 1]))
+            net.append(activation)
+        self.net = nn.Sequential(*net)
+
+        self.to_loc = self.create_last_sequential(dims[-1], config['target_features'], self.activation)
+        self.to_scale = self.create_last_sequential(dims[-1], config['target_features'], self.activation)
+
+    def forward(self, x):
+        eps = 1e-6
+        y = self.net(x)
+        loc = self.to_loc(y)
+        scale = F.softplus(self.to_scale(y)) + eps
+        return loc, scale
+
+    def create_last_sequential(self, last_dim, target_features, activation):
+        sequential = nn.Sequential(
+            nn.Linear(last_dim, last_dim),
+            nn.Tanh(),
+            nn.Linear(last_dim, target_features),
+        )
+        return sequential
+    
+    def to_prediction(self, parameters):
+        loc, scale = parameters
+        return loc
 
 
 def get_decoder(loss_name: str):
@@ -192,8 +265,35 @@ def get_decoder(loss_name: str):
         return MSEDecoder
     elif loss_name == "zinb":
         return ZINBDecoder
+    elif loss_name == 'lognorm':
+        return LogNormDecoder
     else:
         raise NotImplementedError
+
+
+class BatchCritic(pl.LightningModule):
+    def __init__(self, latent_dim: int, total_batches: int):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(latent_dim, 100),
+            nn.LeakyReLU(),
+            nn.Linear(100, 100),
+            nn.LeakyReLU(),
+            nn.Linear(100, total_batches),
+            nn.Softmax()
+        )
+        self.bias = np.log(total_batches)
+    
+    def forward(self, x):
+        return self.net(x)
+
+    def get_loss(self, predicted, true):
+        cross_entropy = F.cross_entropy(predicted, true)
+        return max(self.bias - cross_entropy, 0.0)
+
+def get_critic(critic_name: str):
+    if critic_name == 'discriminator':
+        return BatchCritic
 
 
 class X_autoencoder(pl.LightningModule):
@@ -202,6 +302,11 @@ class X_autoencoder(pl.LightningModule):
         self.lr = config["lr"]
         self.use_mmd = config["use_mmd_loss"]
         self.mmd_lambda = config["mmd_lambda"]
+        self.use_sim_loss = config["use_sim_loss"]
+        self.sim_lambda = config["sim_lambda"]
+        self.use_critic = config["use_critic"]
+        self.critic_lambda = config["critic_lambda"]
+        self.critic_type = config['critic_type']
         self.patience = config["patience"]
         self.vae = config["vae"]
 
@@ -221,9 +326,14 @@ class X_autoencoder(pl.LightningModule):
             second_config, config["latent_dim"]
         )
 
+        if self.use_critic:
+            self.first_critic = get_critic(self.critic_type)(config['latent_dim'], config['total_batches'])
+            self.second_critic = get_critic(self.critic_type)(config['latent_dim'], config['total_batches'])
+
         first_to_second = config["first_to_second"]
         self.first_weight = first_to_second / (1 + first_to_second)
         self.second_weight = 1 / (1 + first_to_second)
+
 
     def forward(self, first, second):
         first_latent = self.first_encoder(first)
@@ -242,6 +352,11 @@ class X_autoencoder(pl.LightningModule):
             "second_to_first": second_to_first,
             "second_to_second": second_to_second,
         }
+
+        if self.use_critic:
+            result['first_critic'] = self.first_critic(first_latent)
+            result['second_critic'] = self.second_critic(second_latent)
+
         return result
 
     def training_step(self, batch, _):
@@ -259,21 +374,61 @@ class X_autoencoder(pl.LightningModule):
     def calculate_loss(self, result: dict, targets, batch_idx):
         first_target, second_target = targets
         loss = 0.0
-        first_to_first = self.first_loss(result["first_to_first"], first_target) * self.first_weight
-        self.log("11", first_to_first, on_step=True, on_epoch=False, prog_bar=True, logger=True)
-        loss += first_to_first
+        first_to_first = (
+            self.first_loss(result["first_to_first"], first_target) * self.first_weight
+        )
+        self.log(
+            "11",
+            first_to_first,
+            on_step=True,
+            on_epoch=False,
+            prog_bar=True,
+            logger=True,
+        )
+        first_loss = first_to_first
 
-        second_to_first = self.first_loss(result["second_to_first"], first_target) * self.first_weight
-        self.log("21", second_to_first, on_step=True, on_epoch=False, prog_bar=True, logger=True)
-        loss += second_to_first
+        second_to_first = (
+            self.first_loss(result["second_to_first"], first_target) * self.first_weight
+        )
+        self.log(
+            "21",
+            second_to_first,
+            on_step=True,
+            on_epoch=False,
+            prog_bar=True,
+            logger=True,
+        )
+        first_loss += second_to_first
 
-        first_to_second = self.second_loss(result["first_to_second"], second_target) * self.second_weight
-        self.log("12", first_to_second, on_step=True, on_epoch=False, prog_bar=True, logger=True)
-        loss += first_to_second
+        first_to_second = (
+            self.second_loss(result["first_to_second"], second_target)
+            * self.second_weight
+        )
+        self.log(
+            "12",
+            first_to_second,
+            on_step=True,
+            on_epoch=False,
+            prog_bar=True,
+            logger=True,
+        )
+        second_loss = first_to_second
 
-        second_to_second = self.second_loss(result["second_to_second"], second_target) * self.second_weight
-        self.log("22", second_to_second, on_step=True, on_epoch=False, prog_bar=True, logger=True)
-        loss += second_to_second
+        second_to_second = (
+            self.second_loss(result["second_to_second"], second_target)
+            * self.second_weight
+        )
+        self.log(
+            "22",
+            second_to_second,
+            on_step=True,
+            on_epoch=False,
+            prog_bar=True,
+            logger=True,
+        )
+        second_loss += second_to_second
+
+        loss = first_loss + second_loss
 
         if self.use_mmd:
             mmd_loss = calculate_mmd_loss(result["first_latent"], batch_idx)
@@ -290,8 +445,33 @@ class X_autoencoder(pl.LightningModule):
             )
         if self.vae:
             kl_loss = self.first_encoder.kl_loss + self.second_encoder.kl_loss
-            self.log("kl", kl_loss, on_step=True, on_epoch=False, prog_bar=True, logger=True)
+            self.log(
+                "kl", kl_loss, on_step=True, on_epoch=False, prog_bar=True, logger=True
+            )
             loss += kl_loss
+        if self.use_sim_loss:
+            sim_loss = F.mse_loss(
+                result["first_latent"],
+                result["second_latent"],
+            )
+            sim_loss *= self.sim_lambda
+            self.log(
+                "sim",
+                sim_loss,
+                on_step=True,
+                on_epoch=False,
+                prog_bar=True,
+                logger=True,
+            )
+            loss += sim_loss  # type: ignore
+        
+        if self.use_critic:
+            critic_loss = self.first_critic.get_loss(result['first_critic'], batch_idx)
+            critic_loss += self.second_critic.get_loss(result['second_critic'], batch_idx)
+            critic_loss *= self.critic_lambda
+            self.log("critic", critic_loss, on_step=True, on_epoch=False, prog_bar=True, logger=True)
+            loss += critic_loss
+
         return loss
 
     def predict_step(self, batch, _):
@@ -303,14 +483,10 @@ class X_autoencoder(pl.LightningModule):
         result = self(first, second)
         first_to_second = result["first_to_second"]
         second_to_first = result["second_to_first"]
-        if self.second_config["loss"] == "nb":
-            first_to_second = convert_nb_parameters_to_mean(first_to_second)
-        elif self.second_config["loss"] == "zinb":
-            first_to_second = convert_zinb_parameters_to_mean(first_to_second)
-        if self.first_config["loss"] == "nb":
-            second_to_first = convert_nb_parameters_to_mean(second_to_first)
-        elif self.first_config["loss"] == "zinb":
-            second_to_first = convert_zinb_parameters_to_mean(second_to_first)
+        if self.second_config['loss'] != 'mse':
+            first_to_second = self.second_decoder.to_prediction(first_to_second)
+        if self.first_config['loss'] != 'mse':
+            second_to_first = self.first_decoder.to_prediction(second_to_first)
         return first_to_second, second_to_first
 
     def configure_optimizers(self):
@@ -370,20 +546,31 @@ class TargetCallback(pl.Callback):
             )
             first_to_second.append(first_to_second_batch)
             second_to_first.append(second_to_first_batch)
-
+            
+        logger = trainer.logger
         if self.second_inverse is not None:
-            metric = calculate_metric(
-                first_to_second,
-                self.second_inverse,
-                self.second_true_target,
-            )
+            predictions = torch.cat(first_to_second, dim=0).cpu().detach()
+            predictions = self.second_inverse(predictions)
+            metric = mp.calculate_target(predictions, self.second_true_target)
             pl_module.log("true_1_to_2", metric, prog_bar=True)
 
+            difference = predictions - self.second_true_target.X.toarray()
+            if logger:
+                logger.experiment.log({
+                    'second_difference': wandb.Histogram(difference)
+                })
+
         if self.first_inverse is not None:
-            metric = calculate_metric(
-                second_to_first, self.first_inverse, self.first_true_target
-            )
+            predictions = torch.cat(second_to_first, dim=0).cpu().detach()
+            predictions = self.first_inverse(predictions)
+            metric = mp.calculate_target(predictions, self.first_true_target)
             pl_module.log("true_2_to_1", metric, prog_bar=True)
+
+            difference = predictions - self.first_true_target.X.toarray()
+            if logger:
+                logger.experiment.log({
+                    'first_difference': wandb.Histogram(difference)
+                })
 
 
 def calculate_mmd_loss(X, batch_idx):

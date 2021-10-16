@@ -58,6 +58,7 @@ def tune_one_config(config, preprocessed_data=None):
     model = x_autoencoder.X_autoencoder(model_config)
 
     trainer = pl.Trainer(
+        max_epochs=30,
         gpus=use_gpu,
         logger=pl_logger,
         callbacks=[
@@ -92,18 +93,38 @@ def tune_hp(config: dict):
     ]
     log.info("Data is preprocessed")
 
-    config["model"].update(search_space)
-    scheduler = ASHAScheduler(max_t=5, grace_period=1, reduction_factor=2)
+    config["model"].update(model_search_space)
+    first = config['model']['first']
+    first['encoder'] = [model_search_space['1dim_1'], model_search_space['1dim_2'], model_search_space['1dim_3']]
+    first['decoder'] = [model_search_space['1dim_3'], model_search_space['1dim_2'], model_search_space['1dim_1']]
+    first['dropout'] = model_search_space['1dropout']
+    first['dropout_pos'] = model_search_space['1dropout_pos']
+    second = config['model']['second']
+    second['encoder'] = [model_search_space['2dim_1'], model_search_space['2dim_2']]
+    second['decoder'] = [model_search_space['2dim_2'], model_search_space['2dim_1']]
+    second['dropout'] = model_search_space['2dropout']
+    second['dropout_pos'] = model_search_space['2dropout_pos']
     tune.run(
         tune.with_parameters(tune_one_config, preprocessed_data=preprocessed_data),
         metric="true_1_to_2",
         mode="min",
         config=config,
-        resources_per_trial={"gpu": 1, "cpu": 8},
-        num_samples=5,
-        scheduler=scheduler,
+        resources_per_trial={"gpu": 1, "cpu": 16},
+        num_samples=-1,
         local_dir="tune",
     )
 
 
-search_space = {"lr": tune.loguniform(1e-4, 1e-1)}
+model_search_space = {
+    '1dim_1': tune.choice([1000, 750, 500, 250]),
+    '1dim_2': tune.choice([500, 250, 150, 100]),
+    '1dim_3': tune.choice([250, 150, 100, 75, 50]),
+    '1dropout': tune.choice([0.3, 0.5, 0.7]),
+    '1dropout_pos': tune.choice([[], [0], [1]]),
+    '2dim_1': tune.choice([100, 75, 50, 40]),
+    '2dim_2': tune.choice([80, 60, 40, 35]),
+    '2dropout': tune.choice([0.3, 0.5, 0.7]),
+    '2dropout_pos': tune.choice([[], [0], [1]]),
+    'latent_dim': tune.choice([20, 30, 40, 50, 60, 70, 80, 90, 100]),
+    'lr': tune.choice([1e-3, 3e-3, 5e-3]),
+}

@@ -185,6 +185,7 @@ def train(config: dict):
     model_config["second"]["target_features"] = preprocessed_data[
         "second_target_features"
     ]
+    model_config['total_batches'] = torch.unique(preprocessed_data['train_batch_idx']).shape[0]
     log.info("Data is preprocessed")
 
     # Configure training
@@ -202,7 +203,7 @@ def train(config: dict):
             project="nips2021",
             log_model=False,  # type: ignore
             config=config,
-            tags=["baseline", "x_autoencoder"],
+            tags=["x_autoencoder"],
             config_exclude_keys=["wandb"],
         )
 
