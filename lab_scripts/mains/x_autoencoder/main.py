@@ -207,6 +207,15 @@ def train(config: dict):
             config_exclude_keys=["wandb"],
         )
 
+        pl_logger.experiment.define_metric(
+            name="true_1_to_2",
+            summary="min"
+        )
+        pl_logger.experiment.define_metric(
+            name="true_2_to_1",
+            summary="min"
+        )
+
     use_gpu = torch.cuda.is_available()
 
     if not use_gpu:
@@ -227,7 +236,6 @@ def train(config: dict):
         ],
         deterministic=True,
         checkpoint_callback=False,
-        gradient_clip_val=model_config["gradient_clip"],
     )
     trainer.fit(model, train_dataloaders=train_dataloader)
 

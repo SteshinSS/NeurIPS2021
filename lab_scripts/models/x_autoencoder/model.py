@@ -18,12 +18,14 @@ import wandb
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("x_autoencoder")
 
+
 def lognorm_loss(predictied_parameters, targets):
     eps = 1e-6
     loc, scale = predictied_parameters
     exp_distribution = LogNormal(loc, scale)
     exp_loss = exp_distribution.log_prob(targets + eps).mean()
     return -exp_loss
+
 
 def zinb_loss(predicted_parameters, targets):
     zinb_r, zinb_p, dropout = predicted_parameters
@@ -46,7 +48,7 @@ def get_loss(loss_name: str):
         return nb_loss
     elif loss_name == "zinb":
         return zinb_loss
-    elif loss_name == 'lognorm':
+    elif loss_name == "lognorm":
         return lognorm_loss
 
 
@@ -69,8 +71,8 @@ class Encoder(pl.LightningModule):
         for i in range(len(dims) - 1):
             net.append(nn.Linear(dims[i], dims[i + 1]))
             net.append(activation)  # type: ignore
-            if i - 1 in config['dropout_pos']:
-                net.append(nn.Dropout(config['dropout']))  # type: ignore
+            if i - 1 in config["dropout_pos"]:
+                net.append(nn.Dropout(config["dropout"]))  # type: ignore
         self.net = nn.Sequential(*net)
 
     def forward(self, x):
@@ -153,8 +155,12 @@ class NBDecoder(pl.LightningModule):
             net.append(activation)
         self.net = nn.Sequential(*net)
 
-        self.to_r = self.create_last_sequential(dims[-1], config['target_features'], self.activation)
-        self.to_p = self.create_last_sequential(dims[-1], config['target_features'], self.activation)
+        self.to_r = self.create_last_sequential(
+            dims[-1], config["target_features"], self.activation
+        )
+        self.to_p = self.create_last_sequential(
+            dims[-1], config["target_features"], self.activation
+        )
 
     def forward(self, x):
         eps = 1e-6
@@ -170,7 +176,7 @@ class NBDecoder(pl.LightningModule):
             nn.Linear(last_dim, target_features),
         )
         return sequential
-    
+
     def to_prediction(self, parameters):
         nb_r, nb_p = parameters
         nb_distribution = NegativeBinomial(nb_r, nb_p)
@@ -215,11 +221,14 @@ class ZINBDecoder(pl.LightningModule):
             nn.Linear(last_dim, target_features),
         )
         return sequential
-    
+
     def to_prediction(self, parameters):
         zinb_r, zinb_p, dropout = parameters
-        zinb_distribution = ZeroInflatedNegativeBinomial(zinb_r, probs=zinb_p, gate=dropout)
+        zinb_distribution = ZeroInflatedNegativeBinomial(
+            zinb_r, probs=zinb_p, gate=dropout
+        )
         return zinb_distribution.mean
+
 
 class LogNormDecoder(pl.LightningModule):
     def __init__(self, config: dict, latent_dim: int):
@@ -235,8 +244,12 @@ class LogNormDecoder(pl.LightningModule):
             net.append(activation)
         self.net = nn.Sequential(*net)
 
-        self.to_loc = self.create_last_sequential(dims[-1], config['target_features'], self.activation)
-        self.to_scale = self.create_last_sequential(dims[-1], config['target_features'], self.activation)
+        self.to_loc = self.create_last_sequential(
+            dims[-1], config["target_features"], self.activation
+        )
+        self.to_scale = self.create_last_sequential(
+            dims[-1], config["target_features"], self.activation
+        )
 
     def forward(self, x):
         eps = 1e-6
@@ -252,7 +265,7 @@ class LogNormDecoder(pl.LightningModule):
             nn.Linear(last_dim, target_features),
         )
         return sequential
-    
+
     def to_prediction(self, parameters):
         loc, scale = parameters
         return loc
@@ -265,7 +278,7 @@ def get_decoder(loss_name: str):
         return MSEDecoder
     elif loss_name == "zinb":
         return ZINBDecoder
-    elif loss_name == 'lognorm':
+    elif loss_name == "lognorm":
         return LogNormDecoder
     else:
         raise NotImplementedError
@@ -279,20 +292,25 @@ class BatchCritic(pl.LightningModule):
             nn.LeakyReLU(),
             nn.Linear(100, 100),
             nn.LeakyReLU(),
+            nn.Linear(100, 100),
+            nn.LeakyReLU(),
             nn.Linear(100, total_batches),
-            nn.Softmax()
         )
         self.bias = np.log(total_batches)
-    
+
     def forward(self, x):
         return self.net(x)
 
-    def get_loss(self, predicted, true):
+    def get_loss(self, predicted, true, shifted=False):
         cross_entropy = F.cross_entropy(predicted, true)
-        return max(self.bias - cross_entropy, 0.0)
+        if shifted:
+            return max(self.bias - cross_entropy, 0.0)
+        else:
+            return cross_entropy
+
 
 def get_critic(critic_name: str):
-    if critic_name == 'discriminator':
+    if critic_name == "discriminator":
         return BatchCritic
 
 
@@ -300,15 +318,18 @@ class X_autoencoder(pl.LightningModule):
     def __init__(self, config: dict):
         super().__init__()
         self.lr = config["lr"]
+        self.patience = config["patience"]
+        self.vae = config["vae"]
         self.use_mmd = config["use_mmd_loss"]
         self.mmd_lambda = config["mmd_lambda"]
         self.use_sim_loss = config["use_sim_loss"]
         self.sim_lambda = config["sim_lambda"]
         self.use_critic = config["use_critic"]
         self.critic_lambda = config["critic_lambda"]
-        self.critic_type = config['critic_type']
-        self.patience = config["patience"]
-        self.vae = config["vae"]
+        self.critic_type = config["critic_type"]
+        self.critic_lr = config["critic_lr"]
+        self.critic_iterations = config['critic_iterations']
+        self.gradient_clip = config['gradient_clip']
 
         first_config = config["first"]
         self.first_config = first_config
@@ -325,15 +346,27 @@ class X_autoencoder(pl.LightningModule):
         self.second_decoder = get_decoder(second_config["loss"])(
             second_config, config["latent_dim"]
         )
+        self.main_parameters = []
+        self.main_parameters.extend(self.first_encoder.parameters())
+        self.main_parameters.extend(self.first_decoder.parameters())
+        self.main_parameters.extend(self.second_encoder.parameters())
+        self.main_parameters.extend(self.second_decoder.parameters())
 
         if self.use_critic:
-            self.first_critic = get_critic(self.critic_type)(config['latent_dim'], config['total_batches'])
-            self.second_critic = get_critic(self.critic_type)(config['latent_dim'], config['total_batches'])
+            self.first_critic = get_critic(self.critic_type)(
+                config["latent_dim"], config["total_batches"]
+            )
+            self.second_critic = get_critic(self.critic_type)(
+                config["latent_dim"], config["total_batches"]
+            )
+            self.automatic_optimization = False
+            self.critic_parameters = []
+            self.critic_parameters.extend(self.first_critic.parameters())
+            self.critic_parameters.extend(self.second_critic.parameters())
 
         first_to_second = config["first_to_second"]
         self.first_weight = first_to_second / (1 + first_to_second)
         self.second_weight = 1 / (1 + first_to_second)
-
 
     def forward(self, first, second):
         first_latent = self.first_encoder(first)
@@ -343,7 +376,6 @@ class X_autoencoder(pl.LightningModule):
         second_latent = self.second_encoder(second)
         second_to_first = self.first_decoder(second_latent)
         second_to_second = self.second_decoder(second_latent)
-
         result = {
             "first_latent": first_latent,
             "first_to_first": first_to_first,
@@ -359,16 +391,43 @@ class X_autoencoder(pl.LightningModule):
 
         return result
 
-    def training_step(self, batch, _):
+    def critic_forward(self, first, second):
+        first_latent = self.first_encoder(first)
+        first_critic = self.first_critic(first_latent.detach())
+
+        second_latent = self.second_encoder(second)
+        second_critic = self.second_critic(second_latent.detach())
+        return first_critic, second_critic
+
+    def training_step(self, batch, batch_n):
         if len(batch) == 2:
             inputs, batch_idx = batch
             targets = inputs
         elif len(batch) == 3:
             inputs, targets, batch_idx = batch
         first, second = inputs
+        optimizers = self.optimizers()
+        
+        if self.use_critic:
+            first_critic, second_critic = self.critic_forward(first, second)
+            critic_optimizer = optimizers[1]
+            critic_optimizer.zero_grad()
+            critic_loss = self.calculate_critic_loss(first_critic, second_critic, batch_idx)
+            self.manual_backward(critic_loss)
+            torch.nn.utils.clip_grad_norm_(self.critic_parameters, self.gradient_clip, error_if_nonfinite=True)
+            critic_optimizer.step()
+
+            if batch_n % self.critic_iterations != 0:
+                return
+
         result = self(first, second)
+        main_optimizer = optimizers[0]
+        main_optimizer.zero_grad()
         loss = self.calculate_loss(result, targets, batch_idx)
-        self.log("train_loss", loss, on_step=True, prog_bar=False, logger=True)
+        self.manual_backward(loss)
+        torch.nn.utils.clip_grad_norm_(self.main_parameters, self.gradient_clip, error_if_nonfinite=True)
+        main_optimizer.step()
+        self.log("train_loss", loss, on_step=True, prog_bar=True, logger=True, on_epoch=False)
         return loss
 
     def calculate_loss(self, result: dict, targets, batch_idx):
@@ -466,12 +525,35 @@ class X_autoencoder(pl.LightningModule):
             loss += sim_loss  # type: ignore
         
         if self.use_critic:
-            critic_loss = self.first_critic.get_loss(result['first_critic'], batch_idx)
-            critic_loss += self.second_critic.get_loss(result['second_critic'], batch_idx)
+            critic_loss = self.first_critic.get_loss(result["first_critic"], batch_idx, shifted=True)
+            critic_loss += self.second_critic.get_loss(
+                result["second_critic"], batch_idx, shifted=True
+            )
             critic_loss *= self.critic_lambda
-            self.log("critic", critic_loss, on_step=True, on_epoch=False, prog_bar=True, logger=True)
+            self.log(
+                "train_critic",
+                critic_loss,
+                on_step=True,
+                on_epoch=False,
+                prog_bar=True,
+                logger=True,
+            )
             loss += critic_loss
-
+        return loss
+    
+    def calculate_critic_loss(self, first_critic, second_critic, batch_idx):
+        loss = self.first_critic.get_loss(first_critic, batch_idx)
+        loss += self.second_critic.get_loss(
+            second_critic, batch_idx
+        )
+        self.log(
+            "critic",
+            loss,
+            on_step=True,
+            on_epoch=False,
+            prog_bar=True,
+            logger=True,
+        )
         return loss
 
     def predict_step(self, batch, _):
@@ -483,24 +565,38 @@ class X_autoencoder(pl.LightningModule):
         result = self(first, second)
         first_to_second = result["first_to_second"]
         second_to_first = result["second_to_first"]
-        if self.second_config['loss'] != 'mse':
+        if self.second_config["loss"] != "mse":
             first_to_second = self.second_decoder.to_prediction(first_to_second)
-        if self.first_config['loss'] != 'mse':
+        if self.first_config["loss"] != "mse":
             second_to_first = self.first_decoder.to_prediction(second_to_first)
         return first_to_second, second_to_first
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
-        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, factor=0.2, patience=self.patience, verbose=True
+
+        main_optimizer = torch.optim.Adam(
+            self.main_parameters,
+            lr=self.lr,
         )
-        return {
-            "optimizer": optimizer,
-            "lr_scheduler": {
-                "scheduler": lr_scheduler,
-                "monitor": "train_loss",
-            },
-        }
+        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            main_optimizer, factor=0.2, patience=self.patience, verbose=True
+        )
+        optimizers = [
+            {
+                "optimizer": main_optimizer,
+                "lr_scheduler": {
+                    "scheduler": lr_scheduler,
+                    "monitor": "train_loss",
+                },
+            }
+        ]
+        if self.use_critic:
+
+            critic_optimizer = torch.optim.Adam(
+                self.critic_parameters,
+                lr=self.critic_lr,
+            )
+            optimizers.append({'optimizer': critic_optimizer})
+        return tuple(optimizers)
 
 
 def calculate_metric(
@@ -546,7 +642,7 @@ class TargetCallback(pl.Callback):
             )
             first_to_second.append(first_to_second_batch)
             second_to_first.append(second_to_first_batch)
-            
+
         logger = trainer.logger
         if self.second_inverse is not None:
             predictions = torch.cat(first_to_second, dim=0).cpu().detach()
@@ -556,9 +652,9 @@ class TargetCallback(pl.Callback):
 
             difference = predictions - self.second_true_target.X.toarray()
             if logger:
-                logger.experiment.log({
-                    'second_difference': wandb.Histogram(difference)
-                })
+                logger.experiment.log(
+                    {"second_difference": wandb.Histogram(difference)}
+                )
 
         if self.first_inverse is not None:
             predictions = torch.cat(second_to_first, dim=0).cpu().detach()
@@ -568,9 +664,7 @@ class TargetCallback(pl.Callback):
 
             difference = predictions - self.first_true_target.X.toarray()
             if logger:
-                logger.experiment.log({
-                    'first_difference': wandb.Histogram(difference)
-                })
+                logger.experiment.log({"first_difference": wandb.Histogram(difference)})
 
 
 def calculate_mmd_loss(X, batch_idx):

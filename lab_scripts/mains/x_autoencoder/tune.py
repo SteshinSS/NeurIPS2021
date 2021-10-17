@@ -44,8 +44,17 @@ def tune_one_config(config, preprocessed_data=None):
         config_exclude_keys=["wandb"],
     )
 
+    pl_logger.experiment.define_metric(
+        name="true_1_to_2",
+        summary="min"
+    )
+    pl_logger.experiment.define_metric(
+        name="true_2_to_1",
+        summary="min"
+    )
+
     tune_callback = TuneReportCallback(
-        ["loss", "true_1_to_2", "true_2_to_1", "11", "12", "21", "22", "mmd"],
+        ["loss", "true_1_to_2", "true_2_to_1", "11", "12", "21", "22", "mmd", 'critic', 'train_critic', 'sim'],
         on="epoch_end",
     )
 
@@ -58,7 +67,7 @@ def tune_one_config(config, preprocessed_data=None):
     model = x_autoencoder.X_autoencoder(model_config)
 
     trainer = pl.Trainer(
-        max_epochs=30,
+        max_epochs=100,
         gpus=use_gpu,
         logger=pl_logger,
         callbacks=[
@@ -67,7 +76,6 @@ def tune_one_config(config, preprocessed_data=None):
         ],
         deterministic=True,
         checkpoint_callback=False,
-        gradient_clip_val=model_config["gradient_clip"],
     )
     trainer.fit(model, train_dataloaders=train_dataloader)
 
@@ -91,19 +99,10 @@ def tune_hp(config: dict):
     model_config["second"]["target_features"] = preprocessed_data[
         "second_target_features"
     ]
+    model_config['total_batches'] = torch.unique(preprocessed_data['train_batch_idx']).shape[0]
     log.info("Data is preprocessed")
 
     config["model"].update(model_search_space)
-    first = config['model']['first']
-    first['encoder'] = [model_search_space['1dim_1'], model_search_space['1dim_2'], model_search_space['1dim_3']]
-    first['decoder'] = [model_search_space['1dim_3'], model_search_space['1dim_2'], model_search_space['1dim_1']]
-    first['dropout'] = model_search_space['1dropout']
-    first['dropout_pos'] = model_search_space['1dropout_pos']
-    second = config['model']['second']
-    second['encoder'] = [model_search_space['2dim_1'], model_search_space['2dim_2']]
-    second['decoder'] = [model_search_space['2dim_2'], model_search_space['2dim_1']]
-    second['dropout'] = model_search_space['2dropout']
-    second['dropout_pos'] = model_search_space['2dropout_pos']
     tune.run(
         tune.with_parameters(tune_one_config, preprocessed_data=preprocessed_data),
         metric="true_1_to_2",
@@ -116,15 +115,7 @@ def tune_hp(config: dict):
 
 
 model_search_space = {
-    '1dim_1': tune.choice([1000, 750, 500, 250]),
-    '1dim_2': tune.choice([500, 250, 150, 100]),
-    '1dim_3': tune.choice([250, 150, 100, 75, 50]),
-    '1dropout': tune.choice([0.3, 0.5, 0.7]),
-    '1dropout_pos': tune.choice([[], [0], [1]]),
-    '2dim_1': tune.choice([100, 75, 50, 40]),
-    '2dim_2': tune.choice([80, 60, 40, 35]),
-    '2dropout': tune.choice([0.3, 0.5, 0.7]),
-    '2dropout_pos': tune.choice([[], [0], [1]]),
-    'latent_dim': tune.choice([20, 30, 40, 50, 60, 70, 80, 90, 100]),
-    'lr': tune.choice([1e-3, 3e-3, 5e-3]),
+    'critic_lr': tune.grid_search([0.001, 0.003, 0.005]),
+    'critic_iterations': tune.grid_search([1, 3, 5, 7, 10]),
+    
 }
