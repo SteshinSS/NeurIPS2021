@@ -288,13 +288,11 @@ class BatchCritic(pl.LightningModule):
     def __init__(self, latent_dim: int, total_batches: int):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(latent_dim, 100),
+            nn.Linear(latent_dim, 50),
             nn.LeakyReLU(),
-            nn.Linear(100, 100),
+            nn.Linear(50, 50),
             nn.LeakyReLU(),
-            nn.Linear(100, 100),
-            nn.LeakyReLU(),
-            nn.Linear(100, total_batches),
+            nn.Linear(50, total_batches),
         )
         self.bias = np.log(total_batches)
 
@@ -359,11 +357,11 @@ class X_autoencoder(pl.LightningModule):
             self.second_critic = get_critic(self.critic_type)(
                 config["latent_dim"], config["total_batches"]
             )
-            self.automatic_optimization = False
             self.critic_parameters = []
             self.critic_parameters.extend(self.first_critic.parameters())
             self.critic_parameters.extend(self.second_critic.parameters())
 
+        self.automatic_optimization = False
         first_to_second = config["first_to_second"]
         self.first_weight = first_to_second / (1 + first_to_second)
         self.second_weight = 1 / (1 + first_to_second)
@@ -416,21 +414,23 @@ class X_autoencoder(pl.LightningModule):
             self.manual_backward(critic_loss)
             torch.nn.utils.clip_grad_norm_(self.critic_parameters, self.gradient_clip, error_if_nonfinite=True)
             critic_optimizer.step()
+            main_optimizer = optimizers[0]
 
             if batch_n % self.critic_iterations != 0:
                 return
+        else:
+            main_optimizer = optimizers
 
         result = self(first, second)
-        main_optimizer = optimizers[0]
         main_optimizer.zero_grad()
-        loss = self.calculate_loss(result, targets, batch_idx)
+        loss = self.calculate_loss(result, targets, batch_idx, batch_n)
         self.manual_backward(loss)
         torch.nn.utils.clip_grad_norm_(self.main_parameters, self.gradient_clip, error_if_nonfinite=True)
         main_optimizer.step()
         self.log("train_loss", loss, on_step=True, prog_bar=True, logger=True, on_epoch=False)
         return loss
 
-    def calculate_loss(self, result: dict, targets, batch_idx):
+    def calculate_loss(self, result: dict, targets, batch_idx, batch_n):
         first_target, second_target = targets
         loss = 0.0
         first_to_first = (
@@ -530,6 +530,10 @@ class X_autoencoder(pl.LightningModule):
                 result["second_critic"], batch_idx, shifted=True
             )
             critic_loss *= self.critic_lambda
+            #if self.current_epoch < 5:
+            #    critic_loss = 0.0
+            #else:
+            #    critic_loss = min(1.0, (1.0/10.0)* (self.current_epoch - 5)) * critic_loss
             self.log(
                 "train_critic",
                 critic_loss,

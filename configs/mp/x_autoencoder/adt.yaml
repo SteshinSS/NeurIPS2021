@@ -8,9 +8,9 @@ data:
       scale: False
       type: float
     targets:
-      use_normalized: True
-      scale: True
-      type: float
+      use_normalized: False
+      scale: False
+      type: int
   mod2:
     name: adt
     inputs:
@@ -25,19 +25,19 @@ data:
 
 model:
   first:
-    encoder: [300, 200, 100]
+    encoder: [250, 500, 250]
     batchnorm_pos: []
     dropout_pos: []
     dropout: 0.5
     decoder: [75, 100, 500]
     activation: leaky_relu
-    loss: mse
+    loss: zinb
   second:
     encoder: [40, 35]
     batchnorm_pos: []
     dropout_pos: []
     dropout: 0.7
-    decoder: [100, 100]
+    decoder: [100, 200]
     activation: leaky_relu
     loss: mse
   latent_dim: 40
@@ -56,6 +56,6 @@ model:
 
   use_critic: True
   critic_type: discriminator
-  critic_lambda: 1.0
+  critic_lambda: 0.1
   critic_lr: 0.002
-  critic_iterations: 5
+  critic_iterations: 1
