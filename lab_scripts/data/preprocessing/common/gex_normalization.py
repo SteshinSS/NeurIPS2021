@@ -2,6 +2,7 @@ import anndata as ad
 import pandas as pd
 import rpy2.robjects as ro
 import scanpy as sc
+import numpy as np
 from rpy2.robjects import numpy2ri, pandas2ri
 from rpy2.robjects.conversion import localconverter
 from rpy2.robjects.packages import importr
@@ -28,7 +29,7 @@ def get_clusters(data: ad.AnnData, resolution: float = 0.5):
 
 
 def calculate_size_factors(
-    data: ad.AnnData, clusters: pd.Series, min_mean: float = 0.1
+    data_matrix: np.ndarray, clusters: pd.Series, min_mean: float = 0.1
 ):
     """Calculates size_factors by the scran R package.
 
@@ -46,13 +47,12 @@ def calculate_size_factors(
     with localconverter(ro.default_converter + pandas2ri.converter):
         clusters = ro.conversion.py2rpy(clusters)
 
-    data_matrix = data.X.T.toarray()
-    size_factors = scran.calculateSumFactors(
+    # data_matrix = data.X.T.toarray()
+    size_factor = scran.calculateSumFactors(
         data_matrix, clusters=clusters, **{"min.mean": min_mean}
     )
-    del data_matrix
-    data.obs["size_factors"] = size_factors
-    return data
+    # data.obs["size_factors"] = size_factors
+    return size_factor
 
 
 def normalize(data: ad.AnnData):
@@ -65,13 +65,14 @@ def normalize(data: ad.AnnData):
         ad.AnnData: Dataset
     """
     # Normalize & log-transform
+    data.layers["counts"] = data.X.copy()
     data.X /= data.obs["size_factors"].values[:, None]
-    data.layers["log_norm"] = sc.pp.log1p(data.X)
+    data.X = sc.pp.log1p(data.X)
     return data
 
 
 def standard_normalization(data: ad.AnnData, config: dict):
     clusters = get_clusters(data)
-    data = calculate_size_factors(data, clusters)
+    data.obs['size_factors'] = calculate_size_factors(data.X.T.toarray(), clusters)
     data = normalize(data)
     return data
