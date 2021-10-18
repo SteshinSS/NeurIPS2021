@@ -171,8 +171,11 @@ def train(config: dict):
     )
     train_dataloader = preprocessed_data["train_dataloader"]
     test_dataloader = preprocessed_data["test_dataloader"]
-    first_inverse = preprocessed_data["first_test_inverse"]
-    second_inverse = preprocessed_data["second_test_inverse"]
+    small_train_dataloader = preprocessed_data['small_train_dataloader']
+    first_test_inverse = preprocessed_data["first_test_inverse"]
+    second_test_inverse = preprocessed_data["second_test_inverse"]
+    first_small_inverse = preprocessed_data['first_small_inverse']
+    second_small_inverse = preprocessed_data['second_small_inverse']
 
     # Add input layer sizes
     model_config["first"]["input_features"] = preprocessed_data["first_input_features"]
@@ -191,10 +194,18 @@ def train(config: dict):
     # Configure training
     validation_callback = x_autoencoder.TargetCallback(
         test_dataloader=test_dataloader,
-        first_inverse=first_inverse,
+        first_inverse=first_test_inverse,
         first_true_target=dataset["test_mod1"],
-        second_inverse=second_inverse,
+        second_inverse=second_test_inverse,
         second_true_target=dataset["test_mod2"],
+    )
+    validation_train_callback = x_autoencoder.TargetCallback(
+        test_dataloader=small_train_dataloader,
+        first_inverse=first_small_inverse,
+        first_true_target=dataset["train_mod1"][:512],
+        second_inverse=second_small_inverse,
+        second_true_target=dataset["train_mod2"][:512],
+        prefix='train',
     )
 
     pl_logger = None
@@ -233,6 +244,7 @@ def train(config: dict):
         logger=pl_logger,
         callbacks=[
             validation_callback,
+            validation_train_callback,
         ],
         deterministic=True,
         checkpoint_callback=False,

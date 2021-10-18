@@ -244,6 +244,13 @@ def preprocess_data(config: dict, dataset, batch_size, is_train):
     second_train, second_test, second_input_features, second_target_features = preprocess_one_dataset(
         config["mod2"], dataset["train_mod2"], dataset["test_mod2"], config["task_type"], is_train
     )
+    first_small, _, _, _ = preprocess_one_dataset(
+        config['mod1'], dataset['train_mod1'][:512], dataset['test_mod1'][:50], config['task_type'], is_train
+    )
+    second_small, _, _, _ =preprocess_one_dataset(
+        config['mod2'], dataset['train_mod2'][:512], dataset['test_mod2'][:50], config['task_type'], is_train
+    )
+
     if torch.cuda.is_available():
         cuda = True
     else:
@@ -257,6 +264,9 @@ def preprocess_data(config: dict, dataset, batch_size, is_train):
         test_dataset = TwoOmicsDataset(
             first_test["X"], second_test["X"], first_test["batch_idx"]
         )
+        small_dataset = TwoOmicsDataset(
+            first_small['X'], second_small['X'], first_small['batch_idx']
+        )
     else:
         train_arguments = get_dataset_arguments(
             first_train, is_first_mirror, second_train, is_second_mirror
@@ -266,9 +276,14 @@ def preprocess_data(config: dict, dataset, batch_size, is_train):
             first_test, is_first_mirror, second_test, is_second_mirror
         )
         test_dataset = FourOmicsDataset(*test_arguments)
+        small_arguments = get_dataset_arguments(
+            first_small, is_first_mirror, second_small, is_second_mirror
+        )
+        small_dataset = FourOmicsDataset(*small_arguments)
     
     if cuda:
         test_dataset.to('cuda')
+        small_dataset.to('cuda')
     
     train_dataloader = DataLoader(
         train_dataset,
@@ -278,17 +293,25 @@ def preprocess_data(config: dict, dataset, batch_size, is_train):
         num_workers=1,
     )
     test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    small_train_dataloader = DataLoader(
+        small_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+    )
     result = {
         "train_dataloader": train_dataloader,
         "test_dataloader": test_dataloader,
+        "small_train_dataloader": small_train_dataloader,
 
         "first_train_inverse": first_train["inverse"],
         "first_test_inverse": first_test["inverse"],
+        "first_small_inverse": first_small['inverse'],
         "first_input_features": first_input_features,
         "first_target_features": first_target_features,
         
         "second_train_inverse": second_train["inverse"],
         "second_test_inverse": second_test["inverse"],
+        'second_small_inverse': second_small['inverse'],
         "second_input_features": second_input_features,
         "second_target_features": second_target_features,
 

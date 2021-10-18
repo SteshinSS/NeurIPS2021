@@ -630,12 +630,16 @@ class TargetCallback(pl.Callback):
         first_true_target=None,
         second_inverse=None,
         second_true_target=None,
+        prefix=None
     ):
         self.test_dataloader = test_dataloader
         self.first_inverse = first_inverse
         self.first_true_target = first_true_target
         self.second_inverse = second_inverse
         self.second_true_target = second_true_target
+        if not prefix:
+            prefix = 'true'
+        self.prefix = prefix
 
     def on_train_epoch_end(self, trainer, pl_module):
         first_to_second = []
@@ -652,23 +656,23 @@ class TargetCallback(pl.Callback):
             predictions = torch.cat(first_to_second, dim=0).cpu().detach()
             predictions = self.second_inverse(predictions)
             metric = mp.calculate_target(predictions, self.second_true_target)
-            pl_module.log("true_1_to_2", metric, prog_bar=True)
+            pl_module.log(self.prefix + "_1_to_2", metric, prog_bar=True)
 
             difference = predictions - self.second_true_target.X.toarray()
             if logger:
                 logger.experiment.log(
-                    {"second_difference": wandb.Histogram(difference)}
+                    {self.prefix + "_second_difference": wandb.Histogram(difference)}
                 )
 
         if self.first_inverse is not None:
             predictions = torch.cat(second_to_first, dim=0).cpu().detach()
             predictions = self.first_inverse(predictions)
             metric = mp.calculate_target(predictions, self.first_true_target)
-            pl_module.log("true_2_to_1", metric, prog_bar=True)
+            pl_module.log(self.prefix + "_2_to_1", metric, prog_bar=True)
 
             difference = predictions - self.first_true_target.X.toarray()
             if logger:
-                logger.experiment.log({"first_difference": wandb.Histogram(difference)})
+                logger.experiment.log({self.prefix + "_first_difference": wandb.Histogram(difference)})
 
 
 def calculate_mmd_loss(X, batch_idx):
