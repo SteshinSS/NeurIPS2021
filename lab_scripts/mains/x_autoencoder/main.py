@@ -6,16 +6,13 @@ import pytorch_lightning as pl
 import torch
 import yaml  # type: ignore
 from lab_scripts.data import dataloader
-from lab_scripts.mains.x_autoencoder import preprocessing
+from lab_scripts.mains.x_autoencoder import preprocessing, tune
 from lab_scripts.mains.x_autoencoder.preprocessing import (
-    base_checkpoint_path,
-    base_config_path,
-)
-from lab_scripts.mains.x_autoencoder import tune
+    base_checkpoint_path, base_config_path)
 from lab_scripts.models import x_autoencoder
 from lab_scripts.utils import utils
-from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import LearningRateMonitor
+from pytorch_lightning.loggers import WandbLogger
 from scipy.sparse import csr_matrix
 
 log = logging.getLogger("x_autoencoder")
@@ -172,11 +169,12 @@ def train(config: dict):
     )
     train_dataloader = preprocessed_data["train_dataloader"]
     test_dataloader = preprocessed_data["test_dataloader"]
-    small_train_dataloader = preprocessed_data['small_train_dataloader']
+    small_train_dataloader = preprocessed_data["small_dataloader"]
+    small_idx = preprocessed_data["small_idx"]
     first_test_inverse = preprocessed_data["first_test_inverse"]
     second_test_inverse = preprocessed_data["second_test_inverse"]
-    first_small_inverse = preprocessed_data['first_small_inverse']
-    second_small_inverse = preprocessed_data['second_small_inverse']
+    first_train_inverse = preprocessed_data["first_train_inverse"]
+    second_train_inverse = preprocessed_data["second_train_inverse"]
 
     # Add input layer sizes
     model_config["first"]["input_features"] = preprocessed_data["first_input_features"]
@@ -189,7 +187,9 @@ def train(config: dict):
     model_config["second"]["target_features"] = preprocessed_data[
         "second_target_features"
     ]
-    model_config['total_batches'] = torch.unique(preprocessed_data['train_batch_idx']).shape[0]
+    model_config["total_batches"] = torch.unique(
+        preprocessed_data["train_batch_idx"]
+    ).shape[0]
     log.info("Data is preprocessed")
 
     # Configure training
@@ -203,14 +203,8 @@ def train(config: dict):
             config_exclude_keys=["wandb"],
         )
 
-        pl_logger.experiment.define_metric(
-            name="true_1_to_2",
-            summary="min"
-        )
-        pl_logger.experiment.define_metric(
-            name="true_2_to_1",
-            summary="min"
-        )
+        pl_logger.experiment.define_metric(name="true_1_to_2", summary="min")
+        pl_logger.experiment.define_metric(name="true_2_to_1", summary="min")
 
     validation_callback = x_autoencoder.TargetCallback(
         test_dataloader=test_dataloader,
@@ -221,16 +215,16 @@ def train(config: dict):
     )
     validation_train_callback = x_autoencoder.TargetCallback(
         test_dataloader=small_train_dataloader,
-        first_inverse=first_small_inverse,
-        first_true_target=dataset["train_mod1"][:512],
-        second_inverse=second_small_inverse,
-        second_true_target=dataset["train_mod2"][:512],
-        prefix='train',
+        first_inverse=first_train_inverse,
+        first_true_target=dataset["train_mod1"][small_idx],
+        second_inverse=second_train_inverse,
+        second_true_target=dataset["train_mod2"][small_idx],
+        prefix="train",
     )
     callbacks = [validation_callback, validation_train_callback]
 
     learning_rate_monitor = LearningRateMonitor(
-        logging_interval='step',
+        logging_interval="step",
     )
     if pl_logger:
         callbacks.append(learning_rate_monitor)

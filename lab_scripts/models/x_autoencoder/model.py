@@ -1,20 +1,19 @@
 import logging
-from typing import Callable, List
 from collections import OrderedDict
+from typing import Callable, List
 
 import anndata as ad
-from numpy import diff
+import numpy as np
 import pytorch_lightning as pl
 import torch
-from torch.nn import functional as F
+import wandb
 from lab_scripts.metrics import mp
 from lab_scripts.utils import utils
-import numpy as np
-from torch import nn
-from torch.distributions.negative_binomial import NegativeBinomial
 from pyro.distributions.zero_inflated import ZeroInflatedNegativeBinomial
+from torch import nn
 from torch.distributions.log_normal import LogNormal
-import wandb
+from torch.distributions.negative_binomial import NegativeBinomial
+from torch.nn import functional as F
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("x_autoencoder")
@@ -58,28 +57,30 @@ def get_activation(activation_name: str):
         return nn.LeakyReLU()
     elif activation_name == "tanh":
         return nn.Tanh()
-    elif activation_name == 'selu':
+    elif activation_name == "selu":
         return nn.SELU()
-    elif activation_name == 'relu':
+    elif activation_name == "relu":
         return nn.ReLU()
 
 
 def selu_init(layer):
     if not isinstance(layer, nn.Linear):
         return
-    torch.nn.init.kaiming_normal_(layer.weight, mode='fan_in', nonlinearity='linear')
+    torch.nn.init.kaiming_normal_(layer.weight, mode="fan_in", nonlinearity="linear")
     torch.nn.init.constant_(layer.bias, 0)
+
 
 def relu_init(layer):
     if not isinstance(layer, nn.Linear):
         return
     torch.nn.init.orthogonal_(layer.weight)
-    torch.nn.init.constant_(layer.bias, 0)   
+    torch.nn.init.constant_(layer.bias, 0)
+
 
 def init(net, activation):
-    if activation == 'selu':
+    if activation == "selu":
         net.apply(selu_init)
-    elif activation == 'relu':
+    elif activation == "relu":
         net.apply(relu_init)
 
 
@@ -93,12 +94,12 @@ class Encoder(pl.LightningModule):
 
         net = []
         for i in range(len(dims) - 1):
-            net.append((f'{i}_Linear', nn.Linear(dims[i], dims[i + 1])))
-            net.append((f'{i}_Activation', activation))  # type: ignore
-            if i - 1 in config['encoder_bn']:
-                net.append((f'{i}_BatchNorm', nn.BatchNorm1d(dims[i+1])))  # type: ignore
+            net.append((f"{i}_Linear", nn.Linear(dims[i], dims[i + 1])))
+            net.append((f"{i}_Activation", activation))  # type: ignore
+            if i - 1 in config["encoder_bn"]:
+                net.append((f"{i}_BatchNorm", nn.BatchNorm1d(dims[i + 1])))  # type: ignore
         self.net = nn.Sequential(OrderedDict(net))
-        init(self.net, config['activation'])
+        init(self.net, config["activation"])
 
     def forward(self, x):
         return self.net(x)
@@ -154,17 +155,17 @@ class MSEDecoder(pl.LightningModule):
         dims.insert(0, latent_dim)
         dims.append(config["target_features"])
         activation = get_activation(config["activation"])
-        batchnorm_pos = config['decoder_bn']
+        batchnorm_pos = config["decoder_bn"]
 
         net = []
         for i in range(len(dims) - 1):
-            net.append((f'{i}_Linear', nn.Linear(dims[i], dims[i + 1])))
+            net.append((f"{i}_Linear", nn.Linear(dims[i], dims[i + 1])))
             if i + 1 != len(dims) - 1:
-                net.append((f'{i}_Activation', activation))
+                net.append((f"{i}_Activation", activation))
             if i - 1 in batchnorm_pos:
-                net.append((f'{i}_BatchNorm', nn.BatchNorm1d(dims[i+1])))  # type: ignore
+                net.append((f"{i}_BatchNorm", nn.BatchNorm1d(dims[i + 1])))  # type: ignore
         self.net = nn.Sequential(OrderedDict(net))
-        init(self.net, config['activation'])
+        init(self.net, config["activation"])
 
     def forward(self, x):
         return self.net(x)
@@ -345,9 +346,9 @@ class X_autoencoder(pl.LightningModule):
     def __init__(self, config: dict):
         super().__init__()
         self.lr = config["lr"]
-        self.attack = config['attack']
-        self.sustain = config['sustain']
-        self.release = config['release']
+        self.attack = config["attack"]
+        self.sustain = config["sustain"]
+        self.release = config["release"]
         self.patience = config["patience"]
         self.vae = config["vae"]
         self.use_mmd = config["use_mmd_loss"]
@@ -358,8 +359,8 @@ class X_autoencoder(pl.LightningModule):
         self.critic_lambda = config["critic_lambda"]
         self.critic_type = config["critic_type"]
         self.critic_lr = config["critic_lr"]
-        self.critic_iterations = config['critic_iterations']
-        self.gradient_clip = config['gradient_clip']
+        self.critic_iterations = config["critic_iterations"]
+        self.gradient_clip = config["gradient_clip"]
 
         first_config = config["first"]
         self.first_config = first_config
@@ -413,8 +414,8 @@ class X_autoencoder(pl.LightningModule):
         }
 
         if self.use_critic:
-            result['first_critic'] = self.first_critic(first_latent)
-            result['second_critic'] = self.second_critic(second_latent)
+            result["first_critic"] = self.first_critic(first_latent)
+            result["second_critic"] = self.second_critic(second_latent)
 
         return result
 
@@ -425,10 +426,6 @@ class X_autoencoder(pl.LightningModule):
         second_latent = self.second_encoder(second)
         second_critic = self.second_critic(second_latent.detach())
         return first_critic, second_critic
-    
-    def training_epoch_end(self, outputs):
-        sch = self.lr_schedulers()
-        sch.step()
 
     def training_step(self, batch, batch_n):
         if len(batch) == 2:
@@ -439,14 +436,18 @@ class X_autoencoder(pl.LightningModule):
         first, second = inputs
 
         optimizers = self.optimizers()
-        
+
         if self.use_critic:
             first_critic, second_critic = self.critic_forward(first, second)
             critic_optimizer = optimizers[1]
             critic_optimizer.zero_grad()
-            critic_loss = self.calculate_critic_loss(first_critic, second_critic, batch_idx)
+            critic_loss = self.calculate_critic_loss(
+                first_critic, second_critic, batch_idx
+            )
             self.manual_backward(critic_loss)
-            torch.nn.utils.clip_grad_norm_(self.critic_parameters, self.gradient_clip, error_if_nonfinite=True)
+            torch.nn.utils.clip_grad_norm_(
+                self.critic_parameters, self.gradient_clip, error_if_nonfinite=True
+            )
             critic_optimizer.step()
             main_optimizer = optimizers[0]
 
@@ -459,10 +460,18 @@ class X_autoencoder(pl.LightningModule):
         main_optimizer.zero_grad()
         loss = self.calculate_loss(result, targets, batch_idx, batch_n)
         self.manual_backward(loss)
-        torch.nn.utils.clip_grad_norm_(self.main_parameters, self.gradient_clip, error_if_nonfinite=True)
+        torch.nn.utils.clip_grad_norm_(
+            self.main_parameters, self.gradient_clip, error_if_nonfinite=True
+        )
         main_optimizer.step()
-        self.log("train_loss", loss, on_step=True, prog_bar=True, logger=True, on_epoch=False)
+        self.log(
+            "train_loss", loss, on_step=True, prog_bar=True, logger=True, on_epoch=False
+        )
         return
+
+    def training_epoch_end(self, outputs):
+        sch = self.lr_schedulers()
+        sch.step()
 
     def calculate_loss(self, result: dict, targets, batch_idx, batch_n):
         first_target, second_target = targets
@@ -506,6 +515,7 @@ class X_autoencoder(pl.LightningModule):
             prog_bar=True,
             logger=True,
         )
+
         loss = first_to_first + first_to_second + second_to_first + second_to_second
         if self.use_mmd:
             mmd_loss = calculate_mmd_loss(result["first_latent"], batch_idx)
@@ -541,16 +551,18 @@ class X_autoencoder(pl.LightningModule):
                 logger=True,
             )
             loss += sim_loss  # type: ignore
-        
+
         if self.use_critic:
-            critic_loss = self.first_critic.get_loss(result["first_critic"], batch_idx, shifted=True)
+            critic_loss = self.first_critic.get_loss(
+                result["first_critic"], batch_idx, shifted=True
+            )
             critic_loss += self.second_critic.get_loss(
                 result["second_critic"], batch_idx, shifted=True
             )
             critic_loss *= self.critic_lambda
-            #if self.current_epoch < 5:
+            # if self.current_epoch < 5:
             #    critic_loss = 0.0
-            #else:
+            # else:
             #    critic_loss = min(1.0, (1.0/10.0)* (self.current_epoch - 5)) * critic_loss
             self.log(
                 "train_critic",
@@ -562,12 +574,10 @@ class X_autoencoder(pl.LightningModule):
             )
             loss += critic_loss
         return loss
-    
+
     def calculate_critic_loss(self, first_critic, second_critic, batch_idx):
         loss = self.first_critic.get_loss(first_critic, batch_idx)
-        loss += self.second_critic.get_loss(
-            second_critic, batch_idx
-        )
+        loss += self.second_critic.get_loss(second_critic, batch_idx)
         self.log(
             "critic",
             loss,
@@ -584,6 +594,8 @@ class X_autoencoder(pl.LightningModule):
         elif len(batch) == 3:
             inputs, _, _ = batch
         first, second = inputs
+        first = first.to(self.device)
+        second = second.to(self.device)
         result = self(first, second)
         first_to_second = result["first_to_second"]
         second_to_first = result["second_to_first"]
@@ -610,21 +622,15 @@ class X_autoencoder(pl.LightningModule):
             return lr_scale
 
         lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
-            main_optimizer,
-            lr_lambda=lr_foo
+            main_optimizer, lr_lambda=lr_foo
         )
-        optimizers = [
-            {
-                "optimizer": main_optimizer,
-                "lr_scheduler": lr_scheduler
-            }
-        ]
+        optimizers = [{"optimizer": main_optimizer, "lr_scheduler": lr_scheduler}]
         if self.use_critic:
             critic_optimizer = torch.optim.Adam(
                 self.critic_parameters,
                 lr=self.critic_lr,
             )
-            optimizers.append({'optimizer': critic_optimizer})
+            optimizers.append({"optimizer": critic_optimizer})
         return tuple(optimizers)
 
 
@@ -655,7 +661,7 @@ class TargetCallback(pl.Callback):
         first_true_target=None,
         second_inverse=None,
         second_true_target=None,
-        prefix=None
+        prefix=None,
     ):
         self.test_dataloader = test_dataloader
         self.first_inverse = first_inverse
@@ -663,7 +669,7 @@ class TargetCallback(pl.Callback):
         self.second_inverse = second_inverse
         self.second_true_target = second_true_target
         if not prefix:
-            prefix = 'true'
+            prefix = "true"
         self.prefix = prefix
 
     def on_train_epoch_end(self, trainer, pl_module):
@@ -673,12 +679,12 @@ class TargetCallback(pl.Callback):
             first_to_second_batch, second_to_first_batch = pl_module.predict_step(
                 batch, i
             )
-            first_to_second.append(first_to_second_batch)
-            second_to_first.append(second_to_first_batch)
+            first_to_second.append(first_to_second_batch.cpu().detach())
+            second_to_first.append(second_to_first_batch.cpu().detach())
 
         logger = trainer.logger
         if self.second_inverse is not None:
-            predictions = torch.cat(first_to_second, dim=0).cpu().detach()
+            predictions = torch.cat(first_to_second, dim=0)
             predictions = self.second_inverse(predictions)
             metric = mp.calculate_target(predictions, self.second_true_target)
             pl_module.log(self.prefix + "_1_to_2", metric, prog_bar=True)
@@ -690,14 +696,17 @@ class TargetCallback(pl.Callback):
                 )
 
         if self.first_inverse is not None:
-            predictions = torch.cat(second_to_first, dim=0).cpu().detach()
+            predictions = torch.cat(second_to_first, dim=0)
             predictions = self.first_inverse(predictions)
             metric = mp.calculate_target(predictions, self.first_true_target)
+
             pl_module.log(self.prefix + "_2_to_1", metric, prog_bar=True)
 
             difference = predictions - self.first_true_target.X.toarray()
             if logger:
-                logger.experiment.log({self.prefix + "_first_difference": wandb.Histogram(difference)})
+                logger.experiment.log(
+                    {self.prefix + "_first_difference": wandb.Histogram(difference)}
+                )
 
 
 def calculate_mmd_loss(X, batch_idx):
