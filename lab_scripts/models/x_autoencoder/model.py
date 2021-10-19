@@ -1,5 +1,6 @@
 import logging
 from typing import Callable, List
+from collections import OrderedDict
 
 import anndata as ad
 from numpy import diff
@@ -57,6 +58,29 @@ def get_activation(activation_name: str):
         return nn.LeakyReLU()
     elif activation_name == "tanh":
         return nn.Tanh()
+    elif activation_name == 'selu':
+        return nn.SELU()
+    elif activation_name == 'relu':
+        return nn.ReLU()
+
+
+def selu_init(layer):
+    if not isinstance(layer, nn.Linear):
+        return
+    torch.nn.init.kaiming_normal_(layer.weight, mode='fan_in', nonlinearity='linear')
+    torch.nn.init.constant_(layer.bias, 0)
+
+def relu_init(layer):
+    if not isinstance(layer, nn.Linear):
+        return
+    torch.nn.init.orthogonal_(layer.weight)
+    torch.nn.init.constant_(layer.bias, 0)   
+
+def init(net, activation):
+    if activation == 'selu':
+        net.apply(selu_init)
+    elif activation == 'relu':
+        net.apply(relu_init)
 
 
 class Encoder(pl.LightningModule):
@@ -69,11 +93,12 @@ class Encoder(pl.LightningModule):
 
         net = []
         for i in range(len(dims) - 1):
-            net.append(nn.Linear(dims[i], dims[i + 1]))
-            net.append(activation)  # type: ignore
-            if i - 1 in config["dropout_pos"]:
-                net.append(nn.Dropout(config["dropout"]))  # type: ignore
-        self.net = nn.Sequential(*net)
+            net.append((f'{i}_Linear', nn.Linear(dims[i], dims[i + 1])))
+            net.append((f'{i}_Activation', activation))  # type: ignore
+            if i - 1 in config['encoder_bn']:
+                net.append((f'{i}_BatchNorm', nn.BatchNorm1d(dims[i+1])))  # type: ignore
+        self.net = nn.Sequential(OrderedDict(net))
+        init(self.net, config['activation'])
 
     def forward(self, x):
         return self.net(x)
@@ -85,7 +110,7 @@ class VAEEncoder(pl.LightningModule):
         dims = config["encoder"]
         dims.insert(0, config["input_features"])
         activation = get_activation(config["activation"])
-        batch_norm_pos = config["batchnorm_pos"]
+        batch_norm_pos = config["encoder_bn"]
 
         net = []
         for i in range(len(dims) - 1):
@@ -129,13 +154,17 @@ class MSEDecoder(pl.LightningModule):
         dims.insert(0, latent_dim)
         dims.append(config["target_features"])
         activation = get_activation(config["activation"])
+        batchnorm_pos = config['decoder_bn']
 
         net = []
         for i in range(len(dims) - 1):
-            net.append(nn.Linear(dims[i], dims[i + 1]))
+            net.append((f'{i}_Linear', nn.Linear(dims[i], dims[i + 1])))
             if i + 1 != len(dims) - 1:
-                net.append(activation)
-        self.net = nn.Sequential(*net)
+                net.append((f'{i}_Activation', activation))
+            if i - 1 in batchnorm_pos:
+                net.append((f'{i}_BatchNorm', nn.BatchNorm1d(dims[i+1])))  # type: ignore
+        self.net = nn.Sequential(OrderedDict(net))
+        init(self.net, config['activation'])
 
     def forward(self, x):
         return self.net(x)
@@ -316,6 +345,9 @@ class X_autoencoder(pl.LightningModule):
     def __init__(self, config: dict):
         super().__init__()
         self.lr = config["lr"]
+        self.attack = config['attack']
+        self.sustain = config['sustain']
+        self.release = config['release']
         self.patience = config["patience"]
         self.vae = config["vae"]
         self.use_mmd = config["use_mmd_loss"]
@@ -362,9 +394,6 @@ class X_autoencoder(pl.LightningModule):
             self.critic_parameters.extend(self.second_critic.parameters())
 
         self.automatic_optimization = False
-        first_to_second = config["first_to_second"]
-        self.first_weight = first_to_second / (1 + first_to_second)
-        self.second_weight = 1 / (1 + first_to_second)
 
     def forward(self, first, second):
         first_latent = self.first_encoder(first)
@@ -396,6 +425,10 @@ class X_autoencoder(pl.LightningModule):
         second_latent = self.second_encoder(second)
         second_critic = self.second_critic(second_latent.detach())
         return first_critic, second_critic
+    
+    def training_epoch_end(self, outputs):
+        sch = self.lr_schedulers()
+        sch.step()
 
     def training_step(self, batch, batch_n):
         if len(batch) == 2:
@@ -404,6 +437,7 @@ class X_autoencoder(pl.LightningModule):
         elif len(batch) == 3:
             inputs, targets, batch_idx = batch
         first, second = inputs
+
         optimizers = self.optimizers()
         
         if self.use_critic:
@@ -428,14 +462,12 @@ class X_autoencoder(pl.LightningModule):
         torch.nn.utils.clip_grad_norm_(self.main_parameters, self.gradient_clip, error_if_nonfinite=True)
         main_optimizer.step()
         self.log("train_loss", loss, on_step=True, prog_bar=True, logger=True, on_epoch=False)
-        return loss
+        return
 
     def calculate_loss(self, result: dict, targets, batch_idx, batch_n):
         first_target, second_target = targets
-        loss = 0.0
-        first_to_first = (
-            self.first_loss(result["first_to_first"], first_target) * self.first_weight
-        )
+
+        first_to_first = self.first_loss(result["first_to_first"], first_target)
         self.log(
             "11",
             first_to_first,
@@ -444,11 +476,8 @@ class X_autoencoder(pl.LightningModule):
             prog_bar=True,
             logger=True,
         )
-        first_loss = first_to_first
 
-        second_to_first = (
-            self.first_loss(result["second_to_first"], first_target) * self.first_weight
-        )
+        second_to_first = self.first_loss(result["second_to_first"], first_target)
         self.log(
             "21",
             second_to_first,
@@ -457,12 +486,8 @@ class X_autoencoder(pl.LightningModule):
             prog_bar=True,
             logger=True,
         )
-        first_loss += second_to_first
 
-        first_to_second = (
-            self.second_loss(result["first_to_second"], second_target)
-            * self.second_weight
-        )
+        first_to_second = self.second_loss(result["first_to_second"], second_target)
         self.log(
             "12",
             first_to_second,
@@ -471,12 +496,8 @@ class X_autoencoder(pl.LightningModule):
             prog_bar=True,
             logger=True,
         )
-        second_loss = first_to_second
 
-        second_to_second = (
-            self.second_loss(result["second_to_second"], second_target)
-            * self.second_weight
-        )
+        second_to_second = self.second_loss(result["second_to_second"], second_target)
         self.log(
             "22",
             second_to_second,
@@ -485,10 +506,7 @@ class X_autoencoder(pl.LightningModule):
             prog_bar=True,
             logger=True,
         )
-        second_loss += second_to_second
-
-        loss = first_loss + second_loss
-
+        loss = first_to_first + first_to_second + second_to_first + second_to_second
         if self.use_mmd:
             mmd_loss = calculate_mmd_loss(result["first_latent"], batch_idx)
             mmd_loss += calculate_mmd_loss(result["second_latent"], batch_idx)
@@ -576,25 +594,32 @@ class X_autoencoder(pl.LightningModule):
         return first_to_second, second_to_first
 
     def configure_optimizers(self):
-
         main_optimizer = torch.optim.Adam(
             self.main_parameters,
             lr=self.lr,
         )
-        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            main_optimizer, factor=0.2, patience=self.patience, verbose=True
+
+        def lr_foo(epoch):
+            if epoch < self.attack:
+                lr_scale = epoch / self.attack
+            elif epoch < (self.sustain + self.attack):
+                lr_scale = 1.0
+            else:
+                lr_scale = 1.0 - (epoch - self.sustain - self.attack) / self.release
+
+            return lr_scale
+
+        lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
+            main_optimizer,
+            lr_lambda=lr_foo
         )
         optimizers = [
             {
                 "optimizer": main_optimizer,
-                "lr_scheduler": {
-                    "scheduler": lr_scheduler,
-                    "monitor": "train_loss",
-                },
+                "lr_scheduler": lr_scheduler
             }
         ]
         if self.use_critic:
-
             critic_optimizer = torch.optim.Adam(
                 self.critic_parameters,
                 lr=self.critic_lr,

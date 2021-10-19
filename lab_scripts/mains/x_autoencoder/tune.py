@@ -56,24 +56,64 @@ class TrueStopper(Stopper):
 
 
 def tune_one_config(config, preprocessed_data=None):
+
+    first_decoder_bn = [
+        [],
+        [],
+        [0],
+        [1],
+        [2],
+        [0,1],
+        [0,2],
+        [1,2]
+    ]
+    first_encoder_bn = [
+        [],
+        [],
+        [0],
+        [1],
+        [0, 1],
+    ]
+    first_decoder = [
+        [500, 750, 1000, 2000],
+        [600, 750, 1500, 2000],
+        [750, 750, 1500, 2500],
+        [500, 500, 750, 1500],
+    ]
     utils.change_directory_to_repo()
     data_config = config["data"]
     model_config = config["model"]
     train_dataloader = preprocessed_data["train_dataloader"]
     test_dataloader = preprocessed_data["test_dataloader"]
-    first_inverse = preprocessed_data["first_test_inverse"]
-    second_inverse = preprocessed_data["second_test_inverse"]
+    small_train_dataloader = preprocessed_data['small_train_dataloader']
+    first_test_inverse = preprocessed_data["first_test_inverse"]
+    second_test_inverse = preprocessed_data["second_test_inverse"]
+    first_small_inverse = preprocessed_data['first_small_inverse']
+    second_small_inverse = preprocessed_data['second_small_inverse']
     first_true_target = preprocessed_data["test_mod1"]
     second_true_target = preprocessed_data["test_mod2"]
 
     # Configure training
     validation_callback = x_autoencoder.TargetCallback(
         test_dataloader=test_dataloader,
-        first_inverse=first_inverse,
+        first_inverse=first_test_inverse,
         first_true_target=first_true_target,
-        second_inverse=second_inverse,
+        second_inverse=second_test_inverse,
         second_true_target=second_true_target,
     )
+
+    validation_train_callback = x_autoencoder.TargetCallback(
+        test_dataloader=small_train_dataloader,
+        first_inverse=first_small_inverse,
+        first_true_target=preprocessed_data["train_mod1"],
+        second_inverse=second_small_inverse,
+        second_true_target=preprocessed_data["train_mod2"],
+        prefix='train',
+    )
+
+    model_config['first']['decoder_bn'] = first_decoder_bn[config['first_decoder_bn']]
+    model_config['first']['encoder_bn'] = first_encoder_bn[config['first_encoder_bn']]
+    model_config['first']['decoder'] = first_decoder[config['first_decoder']]
 
     pl_logger = WandbLogger(
         project="nips2021",
@@ -103,19 +143,6 @@ def tune_one_config(config, preprocessed_data=None):
         on="epoch_end",
     )
 
-    early_stopping_callback12 = EarlyStopping(
-        monitor='true_1_to_2',
-        patience=15 * model_config['critic_iterations'],
-        mode='min',
-        check_on_train_epoch_end=True,
-    )
-    early_stopping_callback21 = EarlyStopping(
-        monitor='true_2_to_1',
-        patience=15 * model_config['critic_iterations'],
-        mode='min',
-        check_on_train_epoch_end=True,
-    )
-
     use_gpu = torch.cuda.is_available()
     if not use_gpu:
         log.warning("GPU is not detected.")
@@ -125,14 +152,13 @@ def tune_one_config(config, preprocessed_data=None):
     model = x_autoencoder.X_autoencoder(model_config)
 
     trainer = pl.Trainer(
-        max_epochs=1500,
+        max_epochs=110,
         gpus=use_gpu,
         logger=pl_logger,
         callbacks=[
             validation_callback,
+            validation_train_callback,
             tune_callback,
-            early_stopping_callback12,
-            early_stopping_callback21,
         ],
         deterministic=True,
         checkpoint_callback=False,
@@ -149,6 +175,8 @@ def tune_hp(config: dict):
     )
     preprocessed_data["test_mod1"] = dataset["test_mod1"]
     preprocessed_data["test_mod2"] = dataset["test_mod2"]
+    preprocessed_data['train_mod1'] = dataset['train_mod1'][:512]
+    preprocessed_data['train_mod2'] = dataset['train_mod2'][:512]
     model_config["first"]["input_features"] = preprocessed_data["first_input_features"]
     model_config["first"]["target_features"] = preprocessed_data[
         "first_target_features"
@@ -165,7 +193,6 @@ def tune_hp(config: dict):
     log.info("Data is preprocessed")
 
     config["model"].update(model_search_space)
-    stopper = TrueStopper(patience=75, grace_period=20)
     tune.run(
         tune.with_parameters(tune_one_config, preprocessed_data=preprocessed_data),
         metric="true_1_to_2",
@@ -174,11 +201,11 @@ def tune_hp(config: dict):
         resources_per_trial={"gpu": 1, "cpu": 16},
         num_samples=-1,
         local_dir="tune",
-        stop=stopper
     )
 
 
 model_search_space = {
-    "critic_lr": tune.grid_search([0.001, 0.003, 0.005]),
-    "critic_iterations": tune.grid_search([1, 3, 5, 7, 10]),
+    'first_decoder_bn': tune.choice([0, 1, 2, 3, 4, 5, 6, 7]),
+    'first_encoder_bn': tune.choice([0, 1, 2, 3, 4]),
+    'first_decoder': tune.choice([0, 1, 2, 3])
 }

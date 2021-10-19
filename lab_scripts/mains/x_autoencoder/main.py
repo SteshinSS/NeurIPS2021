@@ -15,6 +15,7 @@ from lab_scripts.mains.x_autoencoder import tune
 from lab_scripts.models import x_autoencoder
 from lab_scripts.utils import utils
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.callbacks import LearningRateMonitor
 from scipy.sparse import csr_matrix
 
 log = logging.getLogger("x_autoencoder")
@@ -192,22 +193,6 @@ def train(config: dict):
     log.info("Data is preprocessed")
 
     # Configure training
-    validation_callback = x_autoencoder.TargetCallback(
-        test_dataloader=test_dataloader,
-        first_inverse=first_test_inverse,
-        first_true_target=dataset["test_mod1"],
-        second_inverse=second_test_inverse,
-        second_true_target=dataset["test_mod2"],
-    )
-    validation_train_callback = x_autoencoder.TargetCallback(
-        test_dataloader=small_train_dataloader,
-        first_inverse=first_small_inverse,
-        first_true_target=dataset["train_mod1"][:512],
-        second_inverse=second_small_inverse,
-        second_true_target=dataset["train_mod2"][:512],
-        prefix='train',
-    )
-
     pl_logger = None
     if config["wandb"]:
         pl_logger = WandbLogger(
@@ -227,6 +212,29 @@ def train(config: dict):
             summary="min"
         )
 
+    validation_callback = x_autoencoder.TargetCallback(
+        test_dataloader=test_dataloader,
+        first_inverse=first_test_inverse,
+        first_true_target=dataset["test_mod1"],
+        second_inverse=second_test_inverse,
+        second_true_target=dataset["test_mod2"],
+    )
+    validation_train_callback = x_autoencoder.TargetCallback(
+        test_dataloader=small_train_dataloader,
+        first_inverse=first_small_inverse,
+        first_true_target=dataset["train_mod1"][:512],
+        second_inverse=second_small_inverse,
+        second_true_target=dataset["train_mod2"][:512],
+        prefix='train',
+    )
+    callbacks = [validation_callback, validation_train_callback]
+
+    learning_rate_monitor = LearningRateMonitor(
+        logging_interval='step',
+    )
+    if pl_logger:
+        callbacks.append(learning_rate_monitor)
+
     use_gpu = torch.cuda.is_available()
 
     if not use_gpu:
@@ -242,10 +250,7 @@ def train(config: dict):
         gpus=use_gpu,
         max_epochs=5000,
         logger=pl_logger,
-        callbacks=[
-            validation_callback,
-            validation_train_callback,
-        ],
+        callbacks=callbacks,
         deterministic=True,
         checkpoint_callback=False,
     )

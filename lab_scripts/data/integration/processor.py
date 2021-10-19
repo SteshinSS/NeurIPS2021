@@ -16,8 +16,8 @@ class Processor:
 
     def __init__(self, config: dict, mod: str):
         self.top_n_genes = config.get("top_n_genes", None)
-        self.use_normalized = config.get("use_normalized", None)
-        self.scale = config.get("scale", None)
+        self.use_normalized = config["use_normalized"]
+        self.scale = config["scale"]
         self.mod = mod
         type = config['type']
         if type == 'float':
