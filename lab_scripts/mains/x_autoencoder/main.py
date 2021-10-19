@@ -18,6 +18,65 @@ from scipy.sparse import csr_matrix
 log = logging.getLogger("x_autoencoder")
 
 
+def update_model_config(model_config: dict, preprocessed_data: dict):
+    model_config["first"]["input_features"] = preprocessed_data["first_input_features"]
+    model_config["first"]["target_features"] = preprocessed_data[
+        "first_target_features"
+    ]
+    model_config["second"]["input_features"] = preprocessed_data[
+        "second_input_features"
+    ]
+    model_config["second"]["target_features"] = preprocessed_data[
+        "second_target_features"
+    ]
+    model_config["total_batches"] = torch.unique(
+        preprocessed_data["train_batch_idx"]
+    ).shape[0]
+    model_config["batch_weights"] = preprocessed_data["train_batch_weights"]
+    return model_config
+
+
+def get_logger(config):
+    pl_logger = None
+    if config["wandb"]:
+        pl_logger = WandbLogger(
+            project="nips2021",
+            log_model=False,  # type: ignore
+            config=config,
+            tags=["x_autoencoder"],
+            config_exclude_keys=["wandb"],
+        )
+
+        pl_logger.experiment.define_metric(name="true_1_to_2", summary="min")
+        pl_logger.experiment.define_metric(name="true_2_to_1", summary="min")
+    return pl_logger
+
+
+def get_callbacks(preprocessed_data: dict, dataset: dict):
+    validation_callback = x_autoencoder.TargetCallback(
+        test_dataloader=preprocessed_data["test_dataloader"],
+        first_inverse=preprocessed_data["first_test_inverse"],
+        first_true_target=dataset["test_mod1"],
+        second_inverse=preprocessed_data["second_test_inverse"],
+        second_true_target=dataset["test_mod2"],
+    )
+    small_idx = preprocessed_data["small_idx"]
+    validation_train_callback = x_autoencoder.TargetCallback(
+        test_dataloader=preprocessed_data["small_dataloader"],
+        first_inverse=preprocessed_data["first_train_inverse"],
+        first_true_target=dataset["train_mod1"][small_idx],
+        second_inverse=preprocessed_data["second_train_inverse"],
+        second_true_target=dataset["train_mod2"][small_idx],
+        prefix="train",
+    )
+
+    learning_rate_monitor = LearningRateMonitor(
+        logging_interval="step",
+    )
+    callbacks = [validation_callback, validation_train_callback, learning_rate_monitor]
+    return callbacks
+
+
 def predict_submission(
     input_train_mod1: ad.AnnData,
     input_train_mod2: ad.AnnData,
@@ -91,17 +150,7 @@ def evaluate(config: dict):
     second_test_inverse = preprocessed_data["second_test_inverse"]
 
     # Add input feature size
-    model_config["first"]["input_features"] = preprocessed_data["first_input_features"]
-    model_config["first"]["target_features"] = preprocessed_data[
-        "first_target_features"
-    ]
-    model_config["second"]["input_features"] = preprocessed_data[
-        "second_input_features"
-    ]
-    model_config["second"]["target_features"] = preprocessed_data[
-        "second_target_features"
-    ]
-
+    model_config = update_model_config(model_config, preprocessed_data)
     log.info("Data is preprocessed")
 
     # Load model
@@ -129,8 +178,8 @@ def evaluate(config: dict):
         first_to_second = []
         second_to_first = []
         for (first_to_second_batch, second_to_first_batch) in predictions:  # type: ignore
-            first_to_second.append(first_to_second_batch)
-            second_to_first.append(second_to_first_batch)
+            first_to_second.append(first_to_second_batch.cpu())
+            second_to_first.append(second_to_first_batch.cpu())
         print(
             f"{name} {first_mod} to {second_mod} metric: {x_autoencoder.calculate_metric(first_to_second, second_inverse, second_target)}"
         )
@@ -168,71 +217,16 @@ def train(config: dict):
         data_config, dataset, model_config["batch_size"], is_train=True
     )
     train_dataloader = preprocessed_data["train_dataloader"]
-    test_dataloader = preprocessed_data["test_dataloader"]
-    small_train_dataloader = preprocessed_data["small_dataloader"]
-    small_idx = preprocessed_data["small_idx"]
-    first_test_inverse = preprocessed_data["first_test_inverse"]
-    second_test_inverse = preprocessed_data["second_test_inverse"]
-    first_train_inverse = preprocessed_data["first_train_inverse"]
-    second_train_inverse = preprocessed_data["second_train_inverse"]
-
-    # Add input layer sizes
-    model_config["first"]["input_features"] = preprocessed_data["first_input_features"]
-    model_config["first"]["target_features"] = preprocessed_data[
-        "first_target_features"
-    ]
-    model_config["second"]["input_features"] = preprocessed_data[
-        "second_input_features"
-    ]
-    model_config["second"]["target_features"] = preprocessed_data[
-        "second_target_features"
-    ]
-    model_config["total_batches"] = torch.unique(
-        preprocessed_data["train_batch_idx"]
-    ).shape[0]
-    model_config["batch_weights"] = preprocessed_data["train_batch_weights"]
-    print(preprocessed_data['train_batch_weights'])
+    model_config = update_model_config(model_config, preprocessed_data)
     log.info("Data is preprocessed")
 
     # Configure training
-    pl_logger = None
-    if config["wandb"]:
-        pl_logger = WandbLogger(
-            project="nips2021",
-            log_model=False,  # type: ignore
-            config=config,
-            tags=["x_autoencoder"],
-            config_exclude_keys=["wandb"],
-        )
-
-        pl_logger.experiment.define_metric(name="true_1_to_2", summary="min")
-        pl_logger.experiment.define_metric(name="true_2_to_1", summary="min")
-
-    validation_callback = x_autoencoder.TargetCallback(
-        test_dataloader=test_dataloader,
-        first_inverse=first_test_inverse,
-        first_true_target=dataset["test_mod1"],
-        second_inverse=second_test_inverse,
-        second_true_target=dataset["test_mod2"],
-    )
-    validation_train_callback = x_autoencoder.TargetCallback(
-        test_dataloader=small_train_dataloader,
-        first_inverse=first_train_inverse,
-        first_true_target=dataset["train_mod1"][small_idx],
-        second_inverse=second_train_inverse,
-        second_true_target=dataset["train_mod2"][small_idx],
-        prefix="train",
-    )
-    callbacks = [validation_callback, validation_train_callback]
-
-    learning_rate_monitor = LearningRateMonitor(
-        logging_interval="step",
-    )
-    if pl_logger:
-        callbacks.append(learning_rate_monitor)
+    pl_logger = get_logger(config)
+    callbacks = get_callbacks(preprocessed_data, dataset)
+    if not pl_logger:
+        callbacks.pop()
 
     use_gpu = torch.cuda.is_available()
-
     if not use_gpu:
         log.warning("GPU is not detected.")
     use_gpu = int(use_gpu)  # type: ignore
