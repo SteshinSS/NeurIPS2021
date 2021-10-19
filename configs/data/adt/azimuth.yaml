@@ -1,0 +1,11 @@
+isotype_min_counts: 1
+
+isotype_max_counts: 67
+
+cell_min_counts: 1100
+
+cell_max_counts: 24000 
+
+cell_min_proteins: 170
+
+proteins_min_cells: 40
