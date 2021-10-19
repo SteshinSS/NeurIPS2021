@@ -190,6 +190,8 @@ def train(config: dict):
     model_config["total_batches"] = torch.unique(
         preprocessed_data["train_batch_idx"]
     ).shape[0]
+    model_config["batch_weights"] = preprocessed_data["train_batch_weights"]
+    print(preprocessed_data['train_batch_weights'])
     log.info("Data is preprocessed")
 
     # Configure training

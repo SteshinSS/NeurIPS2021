@@ -41,9 +41,15 @@ def nb_loss(predicted_parameters, targets):
     return -log_loss
 
 
+def weighted_mse(predicted, true, weights):
+    difference = (predicted - true)**2
+    difference = torch.unsqueeze(weights, dim =-1) * difference
+    return difference.mean()
+
+
 def get_loss(loss_name: str):
     if loss_name == "mse":
-        return nn.MSELoss()
+        return weighted_mse
     elif loss_name == "nb":
         return nb_loss
     elif loss_name == "zinb":
@@ -361,6 +367,9 @@ class X_autoencoder(pl.LightningModule):
         self.critic_lr = config["critic_lr"]
         self.critic_iterations = config["critic_iterations"]
         self.gradient_clip = config["gradient_clip"]
+        self.register_buffer('batch_weights', torch.tensor(config['batch_weights']))
+        # self.batch_weights = torch.tensor(config["batch_weights"], device=self.device)
+        self.balance_classes = config["balance_classes"]
 
         first_config = config["first"]
         self.first_config = first_config
@@ -473,10 +482,17 @@ class X_autoencoder(pl.LightningModule):
         sch = self.lr_schedulers()
         sch.step()
 
+    def calculate_weights(self, batch_idx):
+        if self.balance_classes:
+            return self.batch_weights[batch_idx]
+        else:
+            return torch.ones_like(batch_idx, device=self.device)
+
     def calculate_loss(self, result: dict, targets, batch_idx, batch_n):
         first_target, second_target = targets
 
-        first_to_first = self.first_loss(result["first_to_first"], first_target)
+        weights = self.calculate_weights(batch_idx)
+        first_to_first = self.first_loss(result["first_to_first"], first_target, weights)
         self.log(
             "11",
             first_to_first,
@@ -486,7 +502,7 @@ class X_autoencoder(pl.LightningModule):
             logger=True,
         )
 
-        second_to_first = self.first_loss(result["second_to_first"], first_target)
+        second_to_first = self.first_loss(result["second_to_first"], first_target, weights)
         self.log(
             "21",
             second_to_first,
@@ -496,7 +512,7 @@ class X_autoencoder(pl.LightningModule):
             logger=True,
         )
 
-        first_to_second = self.second_loss(result["first_to_second"], second_target)
+        first_to_second = self.second_loss(result["first_to_second"], second_target, weights)
         self.log(
             "12",
             first_to_second,
@@ -506,7 +522,7 @@ class X_autoencoder(pl.LightningModule):
             logger=True,
         )
 
-        second_to_second = self.second_loss(result["second_to_second"], second_target)
+        second_to_second = self.second_loss(result["second_to_second"], second_target, weights)
         self.log(
             "22",
             second_to_second,

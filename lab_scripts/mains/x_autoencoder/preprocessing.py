@@ -3,6 +3,7 @@ import pickle
 
 import anndata as ad
 import numpy as np
+from collections import Counter
 import torch
 from lab_scripts.data.integration.processor import (FourOmicsDataset,
                                                     Processor, TwoOmicsDataset)
@@ -178,6 +179,19 @@ def get_dataset_arguments(first, second):
     arguments.append(first["batch_idx"])
     return arguments
 
+def calculate_batch_weights(batch_idx):
+    counter = Counter(batch_idx.numpy())
+    total = 0
+    for key, value in counter.items():
+        total += value
+    total_batches = torch.unique(batch_idx).shape[0]
+    weights = np.zeros((total_batches))
+    for batch in range(total_batches):
+        weights[batch] = total / counter[batch]
+    weights /= weights.sum()
+    return weights
+
+
 
 def preprocess_data(config: dict, dataset, batch_size, is_train):
     """Preprocesses data.
@@ -260,6 +274,7 @@ def preprocess_data(config: dict, dataset, batch_size, is_train):
         "second_input_features": second_input_features,
         "second_target_features": second_target_features,
         "train_batch_idx": first_train["batch_idx"],
+        "train_batch_weights": calculate_batch_weights(first_train["batch_idx"]),
     }
     return result
 

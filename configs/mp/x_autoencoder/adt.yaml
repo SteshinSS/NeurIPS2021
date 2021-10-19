@@ -40,6 +40,7 @@ model:
     loss: mse
   latent_dim: 500
   lr: 0.0005
+  balance_classes: True
   attack: 10
   sustain: 10
   release: 50
