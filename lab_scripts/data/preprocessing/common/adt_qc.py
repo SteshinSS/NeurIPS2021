@@ -13,13 +13,12 @@ def filter_isotype_count(
     Returns:
         ad.AnnData: Dataset with data.obs['iso_count']
     """
-    #isocounts_sum = np.sum(data.obsm['isotype_controls'], axis = 1)
-    #data.obs['iso_count'] = np.asarray(isocounts_sum).reshape(-1)
-    data.obs['iso_count'] = np.asarray(np.sum(data.obsm['isotype_controls'], axis = 1)).reshape(-1)
+    isocounts_sum = np.sum(data.obsm["isotype_controls"], axis=1)
+    data.obs["iso_count"] = np.asarray(isocounts_sum).reshape(-1)
     if min_isocounts is not None:
-        data = data[data.obs['iso_count'] > min_isocounts]
+        data = data[data.obs["iso_count"] > min_isocounts]
     if max_isocounts is not None:
-        data = data[data.obs['iso_count'] < max_isocounts]
+        data = data[data.obs["iso_count"] < max_isocounts]
     return data
 
 
@@ -55,7 +54,9 @@ def calculate_n_cells(data: ad.AnnData):
     return data
 
 
-def filter_genes(data: ad.AnnData, min_proteins: Optional[int], min_cells: Optional[int]):
+def filter_genes(
+    data: ad.AnnData, min_proteins: Optional[int], min_cells: Optional[int]
+):
     """Filters cells and genes.
     Args:
         data (ad.AnnData): Dataset
@@ -64,9 +65,8 @@ def filter_genes(data: ad.AnnData, min_proteins: Optional[int], min_cells: Optio
     Returns:
         ad.AnnData: Filtered dataset.
     """
-    #total_detected_proteins = (data.X > 0).sum(axis=1)
-    #data.obs["n_antibodies_by_counts"] = np.asarray(total_detected_proteins).reshape(-1)
-    data.obs["n_antibodies_by_counts"] = np.asarray((data.X > 0).sum(axis=1)).reshape(-1)
+    total_detected_proteins = (data.X > 0).sum(axis=1)
+    data.obs["n_antibodies_by_counts"] = np.asarray(total_detected_proteins).reshape(-1)
     if min_proteins is not None:
         sc.pp.filter_cells(data, min_genes=min_proteins)
     if min_cells is not None:
@@ -75,8 +75,7 @@ def filter_genes(data: ad.AnnData, min_proteins: Optional[int], min_cells: Optio
 
 
 def standard_qc(data: ad.AnnData, config: dict):
-    """Filters data by number of isotype counts, number of total counts and number of proteins
-    """
+    """Filters data by number of isotype counts, number of total counts and number of proteins"""
     isotype_min_counts = config.get("isotype_min_counts", None)
     isotype_max_counts = config.get("isotype_max_counts", None)
     if isotype_min_counts or isotype_max_counts:
