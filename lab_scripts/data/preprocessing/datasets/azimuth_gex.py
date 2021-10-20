@@ -18,7 +18,8 @@ def preprocess(data, config):
     log.info("Quality Control...")
     data = gex_qc.standard_qc(data, config)
     log.info("Normalizing...")
-    sc.pp.normalize_total(data, target_sum=1e6)
+    #sc.pp.normalize_total(data, target_sum=1e6)
+    data = gex_normalization.normalize_by_batch(data)
     data.write(OUTPUT_PATH, compression="gzip")
     log.info("GEX dataset has been preprocessed. Result is saved to %s", OUTPUT_PATH)
 
