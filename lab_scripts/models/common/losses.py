@@ -1,11 +1,12 @@
 import torch
+import torch.nn.functional as F
 from lab_scripts.utils import utils
 from pyro.distributions.zero_inflated import ZeroInflatedNegativeBinomial
 from torch.distributions.log_normal import LogNormal
 from torch.distributions.negative_binomial import NegativeBinomial
 
 
-def lognorm_loss(predictied_parameters, targets):
+def lognorm_loss(predictied_parameters, targets, weights):
     eps = 1e-6
     loc, scale = predictied_parameters
     exp_distribution = LogNormal(loc, scale)
@@ -13,17 +14,19 @@ def lognorm_loss(predictied_parameters, targets):
     return -exp_loss
 
 
-def zinb_loss(predicted_parameters, targets):
+def zinb_loss(predicted_parameters, targets, weights):
     zinb_r, zinb_p, dropout = predicted_parameters
     zinb_distribution = ZeroInflatedNegativeBinomial(zinb_r, probs=zinb_p, gate=dropout)
-    log_loss = zinb_distribution.log_prob(targets).mean()
+    log_loss = torch.unsqueeze(weights, dim=-1) * zinb_distribution.log_prob(targets)
+    log_loss = log_loss.mean()
     return -log_loss
 
 
-def nb_loss(predicted_parameters, targets):
+def nb_loss(predicted_parameters, targets, weights):
     nb_r, nb_p = predicted_parameters
     nb_distribution = NegativeBinomial(nb_r, nb_p)
-    log_loss = nb_distribution.log_prob(targets).mean()
+    log_loss = torch.unsqueeze(weights, dim=-1) * nb_distribution.log_prob(targets)
+    log_loss = log_loss.mean()
     return -log_loss
 
 
@@ -31,6 +34,27 @@ def weighted_mse(predicted, true, weights):
     difference = (predicted - true) ** 2
     difference = torch.unsqueeze(weights, dim=-1) * difference
     return difference.mean()
+
+
+def zero_mse(predicted, true, weights):
+    y, is_zero = predicted
+    is_true_zero = true == 0.0
+    total = is_true_zero.numel()
+    total_zeros = is_true_zero.sum()
+    total_not_zero = total - total_zeros
+    weights_ce = torch.ones_like(true)
+    weights_ce[is_true_zero] *= total / total_zeros
+    weights_ce[~is_true_zero] *= total / total_not_zero
+    ce_loss = torch.unsqueeze(weights, dim=-1) * F.binary_cross_entropy_with_logits(
+        is_zero, is_true_zero.to(torch.float32), reduction="none", weight=weights_ce
+    )
+    ce_loss = ce_loss.mean()
+    predicted_non_zero = torch.sigmoid(is_zero) < 0.5
+    mse_loss = torch.unsqueeze(weights, dim=-1) * F.mse_loss(
+        predicted_non_zero * y, predicted_non_zero * true, reduction="none"
+    )
+    mse_loss = mse_loss.mean()
+    return ce_loss, mse_loss
 
 
 def get_loss(loss_name: str):
@@ -42,6 +66,8 @@ def get_loss(loss_name: str):
         return zinb_loss
     elif loss_name == "lognorm":
         return lognorm_loss
+    elif loss_name == "zero_mse":
+        return zero_mse
 
 
 def calculate_mmd_loss(X, batch_idx):

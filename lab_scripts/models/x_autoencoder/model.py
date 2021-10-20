@@ -226,22 +226,30 @@ class X_autoencoder(pl.LightningModule):
         first_to_first = self.first_loss(
             result["first_to_first"], first_target, weights
         )
-        self.log("11", first_to_first)
+        self.log("11_ce", first_to_first[0])
+        self.log("11_mse", first_to_first[1])
+        first_to_first = first_to_first[0] + first_to_first[1]
 
         second_to_first = self.first_loss(
             result["second_to_first"], first_target, weights
         )
-        self.log("21", second_to_first)
+        self.log("21_ce", second_to_first[0])
+        self.log("21_mse", second_to_first[1])
+        second_to_first = second_to_first[0] + second_to_first[1]
 
         first_to_second = self.second_loss(
             result["first_to_second"], second_target, weights
         )
-        self.log("12", first_to_second)
+        self.log("12_ce", first_to_second[0])
+        self.log("12_mse", first_to_second[1])
+        first_to_second = first_to_second[0] + first_to_second[1]
 
         second_to_second = self.second_loss(
             result["second_to_second"], second_target, weights
         )
-        self.log("22", second_to_second)
+        self.log("22_ce", second_to_second[0])
+        self.log("22_mse", second_to_second[1])
+        second_to_second = second_to_second[0] + second_to_second[1]
         return first_to_first + first_to_second + second_to_first + second_to_second
 
     def calculate_critic_loss(self, first_critic, second_critic, batch_idx):
@@ -264,6 +272,7 @@ class X_autoencoder(pl.LightningModule):
         )
 
         def lr_foo(epoch):
+            epoch = epoch + 1
             if epoch < self.attack:
                 lr_scale = epoch / self.attack
             elif epoch < (self.sustain + self.attack):
@@ -330,8 +339,9 @@ class X_autoencoder(pl.LightningModule):
 
     def get_metrics(self):
         items = super().get_metrics()
-        items.pop('v_num', None)
+        items.pop("v_num", None)
         return items
+
 
 def calculate_metric(
     raw_predictions: List, inverse_transform: Callable, target_dataset: ad.AnnData
@@ -361,6 +371,7 @@ class TargetCallback(pl.Callback):
         second_inverse=None,
         second_true_target=None,
         prefix=None,
+        small_idx=None,
     ):
         self.test_dataloader = test_dataloader
         self.first_inverse = first_inverse
@@ -370,6 +381,7 @@ class TargetCallback(pl.Callback):
         if not prefix:
             prefix = "true"
         self.prefix = prefix
+        self.small_idx = small_idx
 
     def on_train_epoch_end(self, trainer, pl_module):
         first_to_second = []
@@ -384,7 +396,7 @@ class TargetCallback(pl.Callback):
         logger = trainer.logger
         if self.second_inverse is not None:
             predictions = torch.cat(first_to_second, dim=0)
-            predictions = self.second_inverse(predictions)
+            predictions = self.second_inverse(predictions, self.small_idx)
             metric = mp.calculate_target(predictions, self.second_true_target)
             pl_module.log(self.prefix + "_1_to_2", metric, prog_bar=True)
 
@@ -396,7 +408,7 @@ class TargetCallback(pl.Callback):
 
         if self.first_inverse is not None:
             predictions = torch.cat(second_to_first, dim=0)
-            predictions = self.first_inverse(predictions)
+            predictions = self.first_inverse(predictions, self.small_idx)
             metric = mp.calculate_target(predictions, self.first_true_target)
 
             pl_module.log(self.prefix + "_2_to_1", metric, prog_bar=True)
@@ -406,3 +418,56 @@ class TargetCallback(pl.Callback):
                 logger.experiment.log(
                     {self.prefix + "_first_difference": wandb.Histogram(difference)}
                 )
+        with torch.no_grad():
+            cells = [0]
+            n_genes = 20
+            columns = list(range(n_genes))
+            if pl_module.first_config["loss"] == "zinb":
+                rows = ["r", "p", "dropout", "true"]
+                for i, batch in enumerate(self.test_dataloader):
+                    (
+                        (first_input, second_input),
+                        (first_target, second_target),
+                        batch_idx,
+                    ) = batch
+                    results = pl_module.forward(
+                        first_input.to(pl_module.device),
+                        second_input.to(pl_module.device),
+                    )
+                    r, p, dropout = results["first_to_first"]
+                    for cell in cells:
+                        r_cell = r[cell, :n_genes]
+                        p_cell = p[cell, :n_genes]
+                        dropout_cell = dropout[cell, :n_genes]
+                        true_cell = first_target[cell, :n_genes]
+                        data = [r_cell, p_cell, dropout_cell, true_cell]
+                        table = wandb.Table(data=data, columns=columns, rows=rows)
+                        if logger:
+                            logger.experiment.log({f"{cell}_table": table})
+                    break
+            elif pl_module.first_config["loss"] in ["mse", "zero_mse"]:
+                rows = ["pred", "true"]
+                for i, batch in enumerate(self.test_dataloader):
+                    (
+                        (first_input, second_input),
+                        (first_target, second_target),
+                        batch_idx,
+                    ) = batch
+                    results = pl_module.predict_step(batch, 0)
+                    first_to_second = results[0]
+                    second_to_first = results[1]
+                    for cell in cells:
+                        first_to_second_predict = first_to_second[cell, :n_genes]
+                        first_to_second_true = second_target[cell, :n_genes]
+                        second_to_first_predict = second_to_first[cell, :n_genes]
+                        second_to_first_true = second_target[cell, :n_genes]
+                        data = [
+                            first_to_second_predict,
+                            first_to_second_true,
+                            second_to_first_predict,
+                            second_to_first_true,
+                        ]
+                        table = wandb.Table(data=data, columns=columns, rows=rows)
+                        if logger:
+                            logger.experiment.log({f"{cell}_table": table})
+                    break

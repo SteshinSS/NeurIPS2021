@@ -64,13 +64,16 @@ class Processor:
 
     def _get_inverse_transform(self, args):
         @no_type_check
-        def f(matrix: torch.Tensor):
+        def f(matrix: torch.Tensor, small_idx: np.ndarray = None):
             matrix = matrix.numpy()
             if f.scale:
                 matrix = f.scaler.inverse_transform(matrix)
             if not f.use_normalized:
                 if f.mod == "gex":
-                    matrix = matrix / f.size_factors
+                    if small_idx is not None:
+                        matrix = matrix / f.size_factors[small_idx]
+                    else:
+                        matrix = matrix / f.size_factors
                     matrix = np.log(matrix + 1)
                 elif f.mod == "adt":
                     matrix = CLR_transform(matrix)

@@ -16,18 +16,28 @@ def selu_init(layer):
     if not isinstance(layer, nn.Linear):
         return
     nn.init.kaiming_normal_(layer.weight, mode="fan_in", nonlinearity="linear")
-    nn.init.constant_(layer.bias, 0)
 
 
 def relu_init(layer):
     if not isinstance(layer, nn.Linear):
         return
     nn.init.orthogonal_(layer.weight)
-    nn.init.constant_(layer.bias, 0)
 
 
-def init(net, activation):
+class BiasSetter:
+    def __init__(self, bias):
+        self.bias = bias
+
+    def __call__(self, layer):
+        if not isinstance(layer, nn.Linear):
+            return
+        nn.init.constant_(layer.bias, self.bias)
+
+
+def init(net, activation, bias=0.0):
+    bias_setter = BiasSetter(bias)
     if activation == "selu":
         net.apply(selu_init)
     elif activation == "relu":
         net.apply(relu_init)
+    net.apply(bias_setter)

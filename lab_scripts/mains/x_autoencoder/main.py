@@ -33,6 +33,7 @@ def update_model_config(model_config: dict, preprocessed_data: dict):
         preprocessed_data["train_batch_idx"]
     ).shape[0]
     model_config["batch_weights"] = preprocessed_data["train_batch_weights"]
+    print(model_config['batch_weights'])
     return model_config
 
 
@@ -48,7 +49,9 @@ def get_logger(config):
         )
 
         pl_logger.experiment.define_metric(name="true_1_to_2", summary="min")
+        pl_logger.experiment.define_metric(name="train_1_to_2", summary="min")
         pl_logger.experiment.define_metric(name="true_2_to_1", summary="min")
+        pl_logger.experiment.define_metric(name="train_2_to_1", summary="min")
     return pl_logger
 
 
@@ -68,6 +71,7 @@ def get_callbacks(preprocessed_data: dict, dataset: dict):
         second_inverse=preprocessed_data["second_train_inverse"],
         second_true_target=dataset["train_mod2"][small_idx],
         prefix="train",
+        small_idx=small_idx,
     )
 
     learning_rate_monitor = LearningRateMonitor(
@@ -206,6 +210,9 @@ def evaluate(config: dict):
 
 
 def train(config: dict):
+    # Solution of strange bug.
+    # See https://github.com/pytorch/pytorch/issues/57794#issuecomment-834976384
+    torch.cuda.set_device(0)
     # Load data
     data_config = config["data"]
     dataset = dataloader.load_data(data_config["dataset_name"])
@@ -243,6 +250,7 @@ def train(config: dict):
         callbacks=callbacks,
         deterministic=True,
         checkpoint_callback=False,
+        log_every_n_steps=10
     )
     trainer.fit(model, train_dataloaders=train_dataloader)
 

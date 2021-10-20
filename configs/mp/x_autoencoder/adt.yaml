@@ -4,6 +4,7 @@ data:
   mod1:
     name: gex
     inputs:
+      top_n_genes: 2000
       use_normalized: True
       scale: True
       type: float
@@ -25,26 +26,31 @@ data:
 
 model:
   first:
-    encoder: [2000, 750, 500]
-    encoder_bn: []
-    decoder: [500, 750, 1000, 2000]
-    decoder_bn: []
+    encoder: [2000, 1500, 1000, 1000, 750, 750, 500, 500]
+    encoder_bn: [0, 1, 2, 3, 4, 5, 6, 7]
+    decoder: [500, 500, 750, 750, 1000, 1500, 2000]
+    decoder_bn: [0, 1, 2, 3, 4, 5, 6]
     activation: relu
-    loss: mse
+    loss: zero_mse
+    zero_decoder: [750, 750, 750, 750, 1000, 1500, 2000]
+    zero_decoder_bn: [0, 1, 2, 3, 4, 5, 6]
+
   second:
-    encoder: [100, 200, 300, 400]
-    encoder_bn: []
-    decoder: [200, 200]
-    decoder_bn: []
+    encoder: [200, 200, 300, 400]
+    encoder_bn: [0, 1, 2, 3]
+    decoder: [500, 500, 300]
+    decoder_bn: [0, 1]
     activation: relu
-    loss: mse
+    loss: zero_mse
+    zero_decoder: [500, 500, 300]
+    zero_decoder_bn: [0, 1,]
   latent_dim: 500
-  lr: 0.0005
-  balance_classes: True
+  lr: 0.002
+  balance_classes: False
   attack: 10
-  sustain: 10
-  release: 50
-  batch_size: 128
+  sustain: 300
+  release: 500
+  batch_size: 256
   gradient_clip: 1.0
   patience: 40
   vae: False

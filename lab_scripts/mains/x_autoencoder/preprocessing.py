@@ -189,7 +189,11 @@ def calculate_batch_weights(batch_idx):
     for batch in range(total_batches):
         weights[batch] = total / counter[batch]
     weights /= weights.sum()
-    return weights
+    total_after_weighting = 0.0
+    for batch in range(total_batches):
+        total_after_weighting += counter[batch] * weights[batch]
+    coef = total / total_after_weighting
+    return weights * coef
 
 
 
@@ -230,6 +234,7 @@ def preprocess_data(config: dict, dataset, batch_size, is_train):
         is_train,
     )
 
+
     if torch.cuda.is_available():
         cuda = True
     else:
@@ -243,9 +248,10 @@ def preprocess_data(config: dict, dataset, batch_size, is_train):
         shuffle=is_train,
         pin_memory=cuda,
         num_workers=1,
+        drop_last=True,
     )
 
-    small_idx = np.arange(len(train_dataset))
+    small_idx = np.arange(dataset['train_mod1'].shape[0])
     np.random.shuffle(small_idx)
     small_idx = small_idx[:512]
     small_train_dataloader = DataLoader(
