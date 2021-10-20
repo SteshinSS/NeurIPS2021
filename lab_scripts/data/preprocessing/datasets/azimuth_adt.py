@@ -16,6 +16,13 @@ log = logging.getLogger("azimuth_adt")
 
 
 def remove_isoproteins(data):
+    """Restructure AnnData object while moving isotypic proteins 
+    from .X layer to .obsm["isotype_proteins"
+    Args:
+        data (ad.AnnData): Dataset
+    Returns:
+        ad.AnnData: Dataset
+    """
 
     # Find isotypic rat proteins
     protein_names = data.var.index.tolist()
@@ -56,9 +63,11 @@ def remove_isoproteins(data):
 
 
 def preprocess(data, config):
+    log.info("Removing isoproteins...")
     data = remove_isoproteins(data)
-
+    log.info("Quality Control...")
     data = adt_qc.standard_qc(data, config)
+    log.info("Normalizing...")
     data = adt_normalization.normalize_by_batch(data)
     data.write(OUTPUT_PATH, compression="gzip")
     log.info("ADT dataset has been preprocessed. Result is saved to %s", OUTPUT_PATH)

@@ -1,8 +1,7 @@
-import anndata as ad
-import pandas as pd
 import rpy2.robjects as ro
 import scanpy as sc
 import numpy as np
+import tempfile
 from rpy2.robjects import numpy2ri, pandas2ri
 from rpy2.robjects.conversion import localconverter
 from rpy2.robjects.packages import importr
@@ -12,11 +11,9 @@ numpy2ri.activate()
 
 def get_clusters(data: ad.AnnData, resolution: float = 0.5):
     """Clustrizes cells for size factor calculation.
-
     Args:
         data (ad.AnnData): Dataset
         resoultion (float): See docs of scanpy.tl.louvain
-
     Returns:
         pd.Series: Clusters of the cells
     """
@@ -32,12 +29,10 @@ def calculate_size_factors(
     data_matrix: np.ndarray, clusters: pd.Series, min_mean: float = 0.1
 ):
     """Calculates size_factors by the scran R package.
-
     Args:
         data (ad.AnnData): Dataset
         clusters (pd.Series): Clusterization of the cells
         min_mean (float): See docs of scran::computeSumFactors()
-
     Returns:
         ad.AnnData: Dataset with .obs["size_factors"]
     """
@@ -57,10 +52,8 @@ def calculate_size_factors(
 
 def normalize(data: ad.AnnData):
     """Divides the counts by size factors.
-
     Args:
         data (ad.AnnData): Dataset
-
     Returns:
         ad.AnnData: Dataset
     """
@@ -71,8 +64,49 @@ def normalize(data: ad.AnnData):
     return data
 
 
-def standard_normalization(data: ad.AnnData, config: dict):
-    clusters = get_clusters(data)
-    data.obs['size_factors'] = calculate_size_factors(data.X.T.toarray(), clusters)
-    data = normalize(data)
+def normalize_by_batch(data: ad.AnnData):
+    """Normalizes initial counts. Each batch is transformed independently.
+    Args:
+        data (ad.AnnData): Dataset
+    Returns:
+        ad.AnnData: Dataset
+    """
+    # Save batch list & save var and uns attributes of initial AnnData object
+    batches = sorted(data.obs["batch"].value_counts().index.tolist())
+    var = data.var
+    uns = data.uns
+
+    # Put initial AnnData object into tempfile
+    batch_files = []
+    temp_file_full = tempfile.NamedTemporaryFile("wb")
+    data.write_h5ad(temp_file_full.name)
+    del data
+
+    # Normalize by batch
+    for i in range(len(batches)):
+        data = ad.read_h5ad(temp_file_full.name)
+        batch = data[data.obs["batch"] == batches[i]].copy()
+        del data
+        clusters = get_clusters(batch)
+        batch.obs["size_factors"] = calculate_size_factors(
+            batch.X.T.toarray(), clusters
+        )
+        batch = normalize(batch)
+        del clusters
+
+        # Put each batch into tempfile, save path to each tempfile into array
+        temp_file_batch = tempfile.NamedTemporaryFile("wb", delete=False)
+        batch.write_h5ad(temp_file_batch.name)
+        batch_files.append(temp_file_batch.name)
+
+    # Reload all batches from tempfiles and concatenate them into normalized AnnData object
+    batch_reloaded = []
+    for i in range(len(batch_files)):
+        batch = ad.read_h5ad(batch_files[i])
+        batch_reloaded.append(batch)
+    data = ad.concat(batch_reloaded, axis=0)
+
+    # Add var and uns attributes to normalized AnnData object
+    data.var = var
+    data.uns = uns
     return data
