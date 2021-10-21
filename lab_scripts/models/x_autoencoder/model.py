@@ -63,6 +63,7 @@ class X_autoencoder(pl.LightningModule):
         self.critic_lr = config["critic_lr"]
         self.critic_iterations = config["critic_iterations"]
         self.gradient_clip = config["gradient_clip"]
+        self.l2_lambda = config['l2_lambda']
         self.balance_classes = config["balance_classes"]
         if self.balance_classes:
             self.register_buffer("batch_weights", torch.tensor(config["batch_weights"]))
@@ -86,6 +87,7 @@ class X_autoencoder(pl.LightningModule):
         self.second_decoder = autoencoders.get_decoder(second_config["loss"])(
             second_config, config["latent_dim"]
         )
+
         self.main_parameters = []
         self.main_parameters.extend(self.first_encoder.parameters())
         self.main_parameters.extend(self.first_decoder.parameters())
@@ -113,6 +115,7 @@ class X_autoencoder(pl.LightningModule):
         second_latent = self.second_encoder(second)
         second_to_first = self.first_decoder(second_latent)
         second_to_second = self.second_decoder(second_latent)
+
         result = {
             "first_latent": first_latent,
             "first_to_first": first_to_first,
@@ -221,35 +224,28 @@ class X_autoencoder(pl.LightningModule):
             )
             loss += critic_loss
         return loss
-
+    
     def calculate_standard_loss(self, result, first_target, second_target, weights):
+        is_ce_phase = (self.current_epoch % 4) < 2
         first_to_first = self.first_loss(
-            result["first_to_first"], first_target, weights
+            result["first_to_first"], first_target, weights, is_ce_phase
         )
-        self.log("11_ce", first_to_first[0])
-        self.log("11_mse", first_to_first[1])
-        first_to_first = first_to_first[0] + first_to_first[1]
+        self.log("11", first_to_first)
 
         second_to_first = self.first_loss(
-            result["second_to_first"], first_target, weights
+            result["second_to_first"], first_target, weights, is_ce_phase
         )
-        self.log("21_ce", second_to_first[0])
-        self.log("21_mse", second_to_first[1])
-        second_to_first = second_to_first[0] + second_to_first[1]
+        self.log("21", second_to_first)
 
         first_to_second = self.second_loss(
             result["first_to_second"], second_target, weights
         )
-        self.log("12_ce", first_to_second[0])
-        self.log("12_mse", first_to_second[1])
-        first_to_second = first_to_second[0] + first_to_second[1]
+        self.log("12", first_to_second)
 
         second_to_second = self.second_loss(
             result["second_to_second"], second_target, weights
         )
-        self.log("22_ce", second_to_second[0])
-        self.log("22_mse", second_to_second[1])
-        second_to_second = second_to_second[0] + second_to_second[1]
+        self.log("22", second_to_second)
         return first_to_first + first_to_second + second_to_first + second_to_second
 
     def calculate_critic_loss(self, first_critic, second_critic, batch_idx):
@@ -269,6 +265,8 @@ class X_autoencoder(pl.LightningModule):
         main_optimizer = torch.optim.Adam(
             self.main_parameters,
             lr=self.lr,
+            betas=(0.9, 0.999),
+            weight_decay=self.l2_lambda,
         )
 
         def lr_foo(epoch):
@@ -290,6 +288,7 @@ class X_autoencoder(pl.LightningModule):
             critic_optimizer = torch.optim.Adam(
                 self.critic_parameters,
                 lr=self.critic_lr,
+                weight_decay=0.001,
             )
             optimizers.append({"optimizer": critic_optimizer})
         return tuple(optimizers)
@@ -435,6 +434,9 @@ class TargetCallback(pl.Callback):
                         second_input.to(pl_module.device),
                     )
                     r, p, dropout = results["first_to_first"]
+                    r = r.cpu()
+                    p = p.cpu()
+                    dropout = dropout.cpu()
                     for cell in cells:
                         r_cell = r[cell, :n_genes]
                         p_cell = p[cell, :n_genes]
@@ -454,8 +456,8 @@ class TargetCallback(pl.Callback):
                         batch_idx,
                     ) = batch
                     results = pl_module.predict_step(batch, 0)
-                    first_to_second = results[0]
-                    second_to_first = results[1]
+                    first_to_second = results[0].cpu()
+                    second_to_first = results[1].cpu()
                     for cell in cells:
                         first_to_second_predict = first_to_second[cell, :n_genes]
                         first_to_second_true = second_target[cell, :n_genes]

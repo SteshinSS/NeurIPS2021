@@ -81,7 +81,9 @@ def get_decoder_fc_net(dims, batch_norm_pos, activation):
             net.append((f"{i}_Activation", activation))
         if i - 1 in batch_norm_pos:
             net.append((f"{i}_BatchNorm", nn.BatchNorm1d(dims[i + 1])))  # type: ignore
-    return nn.Sequential(OrderedDict(net))
+    net = nn.Sequential(OrderedDict(net))
+    print(net)
+    return net
 
 
 class MSEDecoder(pl.LightningModule):
@@ -121,7 +123,7 @@ class ZeroMSEDecoder(pl.LightningModule):
         plugins.init(self.zero_net, config["activation"])
 
     def forward(self, x):
-        y = F.leaky_relu(self.main_net(x))
+        y = F.softplus(self.main_net(x))
         is_zero = self.zero_net(x)
         return y, is_zero
 
@@ -177,58 +179,42 @@ class NBDecoder(pl.LightningModule):
 class ZINBDecoder(pl.LightningModule):
     def __init__(self, config: dict, latent_dim: int):
         super().__init__()
-        dims = config["decoder"]
-        dims.insert(0, latent_dim)
         activation = plugins.get_activation(config["activation"])
-        batchnorm_pos = config["decoder_bn"]
 
-        net = []
-        for i in range(len(dims) - 1):
-            net.append((f"{i}_Linear", nn.Linear(dims[i], dims[i + 1])))
-            net.append((f"{i}_Activation", activation))
-            if i - 1 in batchnorm_pos:
-                net.append((f"{i}_BatchNorm", nn.BatchNorm1d(dims[i + 1])))  # type: ignore
-        self.net = nn.Sequential(OrderedDict(net))
-        plugins.init(self.net, config["activation"])
+        r_dims = config["decoder"]
+        r_dims.insert(0, latent_dim)
+        r_dims.append(config["target_features"])
+        r_batch_norm_pos = config["decoder_bn"]
+        self.to_r = get_decoder_fc_net(r_dims, r_batch_norm_pos, activation)
+        plugins.init(self.to_r, config["activation"])
 
-        self.to_r = self.create_last_sequential(
-            dims[-1], config["target_features"], activation
-        )
-        plugins.init(self.to_r[-1], config["activation"], 0.001)
-        plugins.init(self.to_r[0], config["activation"], 0.0)
-        self.to_p = self.create_last_sequential(
-            dims[-1], config["target_features"], activation
-        )
-        plugins.init(self.to_p[-1], config["activation"], 0.9)
-        plugins.init(self.to_p[0], config["activation"], 0.0)
-        self.to_dropout = self.create_last_sequential(
-            dims[-1], config["target_features"], activation
-        )
-        plugins.init(self.to_dropout[-1], config["activation"], 0.95)
-        plugins.init(self.to_dropout[0], config["activation"], 0.0)
+        p_dims = config["p_decoder"]
+        p_dims.insert(0, latent_dim)
+        p_dims.append(config["target_features"])
+        p_batch_norm_pos = config["p_decoder_bn"]
+        self.to_p = get_decoder_fc_net(p_dims, p_batch_norm_pos, activation)
+        plugins.init(self.to_p, config["activation"])
+
+        zero_dims = config["zero_decoder"]
+        zero_dims.insert(0, latent_dim)
+        zero_dims.append(config["target_features"])
+        zero_batch_norm_pos = config["zero_decoder_bn"]
+        self.to_zero = get_decoder_fc_net(zero_dims, zero_batch_norm_pos, activation)
+        plugins.init(self.to_zero, config["activation"])
 
     def forward(self, x):
         eps = 1e-6
-        y = self.net(x)
-        nb_r = torch.exp(self.to_r(y)) + eps
-        nb_p = torch.sigmoid(self.to_p(y))
-        dropout = torch.sigmoid(self.to_dropout(y))
-        return nb_r, nb_p * (1 - eps), dropout * (1 - eps)
-
-    def create_last_sequential(self, last_dim, target_features, activation):
-        sequential = nn.Sequential(
-            nn.Linear(last_dim, last_dim),
-            nn.ReLU(),
-            nn.Linear(last_dim, target_features),
-        )
-        return sequential
+        r = F.softplus(self.to_r(x)) + eps
+        p = torch.sigmoid(self.to_p(x)) * (1 - eps)
+        zero = torch.sigmoid(self.to_zero(x)) * (1 - eps)
+        return r, p, zero
 
     def to_prediction(self, parameters):
         zinb_r, zinb_p, dropout = parameters
-        zinb_distribution = ZeroInflatedNegativeBinomial(
-            zinb_r, probs=zinb_p, gate=dropout
-        )
-        return zinb_distribution.mean
+        zinb_distribution = NegativeBinomial(zinb_r, probs=zinb_p)
+        mean = zinb_distribution.mean
+        zeros = torch.zeros_like(zinb_r, device=self.device)
+        return torch.where(dropout > 0.5, zeros, mean)
 
 
 class LogNormDecoder(pl.LightningModule):

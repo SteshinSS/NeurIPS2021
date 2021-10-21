@@ -2,6 +2,7 @@ import argparse
 import logging
 
 import anndata as ad
+import scanpy as sc
 import pytorch_lightning as pl
 import torch
 import yaml  # type: ignore
@@ -216,6 +217,9 @@ def train(config: dict):
     # Load data
     data_config = config["data"]
     dataset = dataloader.load_data(data_config["dataset_name"])
+    hvg = sc.pp.highly_variable_genes(dataset['train_mod1'], n_top_genes=1000, inplace=False)['highly_variable']
+    dataset['train_mod1'] = dataset['train_mod1'][:, hvg]
+    dataset['test_mod1'] = dataset['test_mod1'][:, hvg]
     log.info("Data is loaded")
 
     # Preprocess data

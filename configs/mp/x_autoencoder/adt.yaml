@@ -4,7 +4,6 @@ data:
   mod1:
     name: gex
     inputs:
-      top_n_genes: 2000
       use_normalized: True
       scale: True
       type: float
@@ -26,32 +25,35 @@ data:
 
 model:
   first:
-    encoder: [2000, 1500, 1000, 1000, 750, 750, 500, 500]
-    encoder_bn: [0, 1, 2, 3, 4, 5, 6, 7]
-    decoder: [500, 500, 750, 750, 1000, 1500, 2000]
-    decoder_bn: [0, 1, 2, 3, 4, 5, 6]
-    activation: relu
-    loss: zero_mse
-    zero_decoder: [750, 750, 750, 750, 1000, 1500, 2000]
-    zero_decoder_bn: [0, 1, 2, 3, 4, 5, 6]
+    encoder: [2000, 700, 500]
+    encoder_bn: []
+    decoder: [500, 700, 2000]
+    decoder_bn: []
+    activation: leaky_relu
+    loss: mse
+    zero_decoder: []
+    zero_decoder_bn: []
+    p_decoder: []
+    p_decoder_bn: []
 
   second:
-    encoder: [200, 200, 300, 400]
-    encoder_bn: [0, 1, 2, 3]
-    decoder: [500, 500, 300]
-    decoder_bn: [0, 1]
+    encoder: [100, 100]
+    encoder_bn: []
+    decoder: [100, 100]
+    decoder_bn: []
     activation: relu
-    loss: zero_mse
-    zero_decoder: [500, 500, 300]
-    zero_decoder_bn: [0, 1,]
+    loss: mse
+    zero_decoder: []
+    zero_decoder_bn: []
   latent_dim: 500
-  lr: 0.002
-  balance_classes: False
+  lr: 0.001
+  balance_classes: True
   attack: 10
-  sustain: 300
+  sustain: 1000
   release: 500
   batch_size: 256
   gradient_clip: 1.0
+  l2_lambda: 0.0002
   patience: 40
   vae: False
   swa: False

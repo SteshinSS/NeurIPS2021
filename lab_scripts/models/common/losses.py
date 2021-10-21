@@ -1,8 +1,10 @@
+from pyro.distributions import zero_inflated
 import torch
 import torch.nn.functional as F
 from lab_scripts.utils import utils
-from pyro.distributions.zero_inflated import ZeroInflatedNegativeBinomial
+from pyro.distributions.zero_inflated import ZeroInflatedNegativeBinomial, ZeroInflatedDistribution
 from torch.distributions.log_normal import LogNormal
+from torch.distributions.normal import Normal
 from torch.distributions.negative_binomial import NegativeBinomial
 
 
@@ -30,31 +32,26 @@ def nb_loss(predicted_parameters, targets, weights):
     return -log_loss
 
 
-def weighted_mse(predicted, true, weights):
+def weighted_mse(predicted, true, weights, is_ce_phase=None):
     difference = (predicted - true) ** 2
     difference = torch.unsqueeze(weights, dim=-1) * difference
     return difference.mean()
 
 
-def zero_mse(predicted, true, weights):
+def zero_mse(predicted, true, weights, is_ce_phase):
     y, is_zero = predicted
-    is_true_zero = true == 0.0
-    total = is_true_zero.numel()
-    total_zeros = is_true_zero.sum()
-    total_not_zero = total - total_zeros
-    weights_ce = torch.ones_like(true)
-    weights_ce[is_true_zero] *= total / total_zeros
-    weights_ce[~is_true_zero] *= total / total_not_zero
-    ce_loss = torch.unsqueeze(weights, dim=-1) * F.binary_cross_entropy_with_logits(
-        is_zero, is_true_zero.to(torch.float32), reduction="none", weight=weights_ce
-    )
-    ce_loss = ce_loss.mean()
-    predicted_non_zero = torch.sigmoid(is_zero) < 0.5
-    mse_loss = torch.unsqueeze(weights, dim=-1) * F.mse_loss(
-        predicted_non_zero * y, predicted_non_zero * true, reduction="none"
-    )
-    mse_loss = mse_loss.mean()
-    return ce_loss, mse_loss
+    #if is_ce_phase:
+    #    true_zero = true == 0.0
+    #    weights_ce = torch.ones_like(true_zero).to(torch.float32)
+    #    weights_ce[~true_zero] *= 20
+    #    loss = F.binary_cross_entropy_with_logits(is_zero, true_zero.to(torch.float32), weight=weights_ce)
+    #else:
+    #    predicted_not_zero = torch.sigmoid(is_zero) < 0.5
+    #    loss = F.mse_loss(y[predicted_not_zero], true[predicted_not_zero])
+    dist = ZeroInflatedDistribution(Normal(y, 1), gate_logits=is_zero)
+    loss = -dist.log_prob(true)
+    loss = torch.unsqueeze(weights, dim=-1) * loss
+    return loss.mean()
 
 
 def get_loss(loss_name: str):
