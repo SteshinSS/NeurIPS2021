@@ -38,6 +38,6 @@ def init(net, activation, bias=0.0):
     bias_setter = BiasSetter(bias)
     if activation == "selu":
         net.apply(selu_init)
-    elif activation == "relu":
+    elif activation in ["relu", 'leaky_relu']:
         net.apply(relu_init)
     net.apply(bias_setter)

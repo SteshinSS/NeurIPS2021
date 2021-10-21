@@ -116,7 +116,7 @@ class TwoOmicsDataset(Dataset):
         return self.first.shape[0]
 
     def __getitem__(self, idx):
-        return (self.first[idx], self.second[idx]), self.batch_idx[idx]
+        return self.first[idx], self.second[idx], self.batch_idx[idx]
     
     def to(self, device):
         self.first = self.first.to(device)

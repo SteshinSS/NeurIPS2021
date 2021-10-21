@@ -1,0 +1,32 @@
+data: 
+  dataset_name: mp/official/gex_to_adt
+  task_type: gex_to_adt
+  mod1:
+    name: gex
+    use_normalized: True
+    scale: True
+    type: float
+  mod2:
+    name: adt
+    use_normalized: True
+    scale: True
+    type: float
+
+
+
+model:
+  dims: [1000, 700, 500, 300, 200, 150]
+  bn: []
+  activation: leaky_relu
+  lr: 0.001
+  balance_classes: True
+  attack: 10
+  sustain: 1000
+  release: 500
+  batch_size: 256
+  gradient_clip: 1.0
+  l2_lambda: 0.0
+  l1_lambda: 0.0
+  use_vi_dropout: True
+  vi_lambda: 1.0
+  vi_attack: 30
