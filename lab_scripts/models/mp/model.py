@@ -39,7 +39,7 @@ class VariationalDropout(pl.LightningModule):
         w = torch.sigmoid(self.weight)
         u = Uniform(0., 1.).sample(x.shape).to(self.device)
         z = torch.log(w + eps) - torch.log(1 - w + eps) + torch.log(u + eps) - torch.log(1 - u + eps)
-        z = torch.sigmoid(0.1 * z)
+        z = torch.sigmoid(10. * z)
         vi_loss = z.mean()
         return x * z, vi_loss
 

@@ -6,7 +6,7 @@ import pytorch_lightning as pl
 import torch
 import yaml  # type: ignore
 from lab_scripts.data import dataloader
-from lab_scripts.mains.mp import preprocessing
+from lab_scripts.mains.mp import preprocessing, tune, common
 from lab_scripts.mains.mp.preprocessing import (
     base_checkpoint_path, base_config_path)
 from lab_scripts.models import mp
@@ -14,19 +14,12 @@ from lab_scripts.utils import utils
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 from scipy.sparse import csr_matrix
+import numpy as np
 
 log = logging.getLogger("mp")
 
 
-def update_model_config(model_config: dict, preprocessed_data: dict):
-    model_config['dims'].insert(0, preprocessed_data['first_input_features'])
-    model_config['dims'].append(preprocessed_data['second_input_features'])
-    model_config["total_batches"] = torch.unique(
-        preprocessed_data["train_batch_idx"]
-    ).shape[0]
-    model_config["batch_weights"] = preprocessed_data["train_batch_weights"]
-    print(model_config['batch_weights'])
-    return model_config
+
 
 
 def get_logger(config):
@@ -140,7 +133,7 @@ def evaluate(config: dict):
     second_test_inverse = preprocessed_data["second_test_inverse"]
 
     # Add input feature size
-    model_config = update_model_config(model_config, preprocessed_data)
+    model_config = common.update_model_config(model_config, preprocessed_data)
     log.info("Data is preprocessed")
 
     # Load model
@@ -211,7 +204,7 @@ def train(config: dict):
         data_config, dataset, model_config["batch_size"], is_train=True
     )
     train_dataloader = preprocessed_data["train_dataloader"]
-    model_config = update_model_config(model_config, preprocessed_data)
+    model_config = common.update_model_config(model_config, preprocessed_data)
     log.info("Data is preprocessed")
 
     # Configure training
@@ -247,6 +240,13 @@ def train(config: dict):
     )
     trainer.save_checkpoint(checkpoint_path)
     log.info(f"Model is saved to {checkpoint_path}")
+
+    if model.use_vi_dropout:
+        weights_path = base_checkpoint_path + 'genes.csv'
+        weights = model.vi_dropout.weight.detach().cpu().numpy()
+        np.savetxt(weights_path ,weights, delimiter=',')
+        log.info(f"Genes weights are saved to {weights_path}")
+
 
 
 def get_parser():
