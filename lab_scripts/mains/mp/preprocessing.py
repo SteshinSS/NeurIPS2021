@@ -78,6 +78,7 @@ def get_batch_idx(dataset: ad.AnnData):
 def apply_processor(
     config: dict,
     dataset_train: ad.AnnData,
+    dataset_val: ad.AnnData,
     dataset_test: ad.AnnData,
     mod: str,
     task_type: str,
@@ -86,19 +87,22 @@ def apply_processor(
     if is_train:
         processor = Processor(config, mod)
         train_X, train_inverse = processor.fit_transform(dataset_train)
+        val_X, val_inverse = processor.transform(dataset_val)
         test_X, test_inverse = processor.transform(dataset_test)
         save_processor(processor, config, task_type, mod)
-        return train_X, train_inverse, test_X, test_inverse
     else:
         processor = load_processor(config, task_type, mod)
         train_X, train_inverse = processor.fit_transform(dataset_train)
+        val_X, val_inverse = processor.fit_transform(dataset_val)
         test_X, test_inverse = processor.transform(dataset_test)
-        return train_X, train_inverse, test_X, test_inverse
+    
+    return train_X, train_inverse, val_X, val_inverse, test_X, test_inverse
 
 
 def preprocess_one_dataset(
     mod_config: dict,
     dataset_train: ad.AnnData,
+    dataset_val: ad.AnnData,
     dataset_test: ad.AnnData,
     task_type: str,
     is_train: bool,
@@ -115,9 +119,10 @@ def preprocess_one_dataset(
         tuple: train dict, test dict and number of features
     """
     mod = mod_config["name"]
-    train_X, train_inverse, test_X, test_inverse = apply_processor(
+    train_X, train_inverse, val_X, val_inverse, test_X, test_inverse = apply_processor(
         mod_config,
         dataset_train,
+        dataset_val,
         dataset_test,
         mod,
         task_type,
@@ -125,12 +130,19 @@ def preprocess_one_dataset(
     )
 
     train_batch_idx = get_batch_idx(dataset_train)
+    val_batch_idx = get_batch_idx(dataset_val)
     test_batch_idx = get_batch_idx(dataset_test)
 
     train = {
         "X": train_X,
         "inverse": train_inverse,
         "batch_idx": train_batch_idx,
+    }
+
+    val = {
+        'X': val_X,
+        'inverse': val_inverse,
+        'batch_idx': val_batch_idx
     }
 
     test = {
@@ -141,7 +153,7 @@ def preprocess_one_dataset(
 
     inputs_features = train_X.shape[1]
 
-    return train, test, inputs_features
+    return train, val, test, inputs_features
 
 
 def calculate_batch_weights(batch_idx):
@@ -176,22 +188,26 @@ def preprocess_data(config: dict, dataset, batch_size, is_train):
     """
     (
         first_train,
+        first_val,
         first_test,
         first_input_features,
     ) = preprocess_one_dataset(
         config["mod1"],
         dataset["train_mod1"],
+        dataset['val_mod1'],
         dataset["test_mod1"],
         config["task_type"],
         is_train,
     )
     (
         second_train,
+        second_val,
         second_test,
         second_input_features,
     ) = preprocess_one_dataset(
         config["mod2"],
         dataset["train_mod2"],
+        dataset['val_mod2'],
         dataset["test_mod2"],
         config["task_type"],
         is_train,
@@ -213,7 +229,16 @@ def preprocess_data(config: dict, dataset, batch_size, is_train):
         drop_last=True,
     )
 
-    small_idx = np.arange(dataset['train_mod1'].shape[0])
+    val_dataset = TwoOmicsDataset(first_val['X'], second_val['X'], first_val['batch_idx'])
+    val_dataloader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        pin_memory=cuda,
+        num_workers=1,
+    )
+
+    small_idx = np.arange(first_train['X'].shape[0])
     np.random.shuffle(small_idx)
     small_idx = small_idx[:512]
     small_train_dataloader = DataLoader(
@@ -230,12 +255,15 @@ def preprocess_data(config: dict, dataset, batch_size, is_train):
     result = {
         "train_dataloader": train_dataloader,
         "test_dataloader": test_dataloader,
+        'val_dataloader': val_dataloader,
         "small_dataloader": small_train_dataloader,
         "small_idx": small_idx,
         "first_train_inverse": first_train["inverse"],
+        "first_val_inverse": first_val["inverse"],
         "first_test_inverse": first_test["inverse"],
         "first_input_features": first_input_features,
         "second_train_inverse": second_train["inverse"],
+        "second_val_inverse": second_val["inverse"],
         "second_test_inverse": second_test["inverse"],
         "second_input_features": second_input_features,
         "train_batch_idx": first_train["batch_idx"],

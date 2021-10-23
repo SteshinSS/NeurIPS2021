@@ -50,7 +50,7 @@ def get_callbacks(preprocessed_data: dict, dataset: dict):
         logging_interval="step",
     )
 
-    early_stopping = EarlyStopping(monitor='train_m', patience=30, mode='min')
+    early_stopping = EarlyStopping(monitor='test_m', patience=50, mode='min')
     callbacks = [train_val_callback, test_val_callback, early_stopping, learning_rate_monitor]
     return callbacks
 
@@ -61,8 +61,14 @@ def tune_one_config(config: dict, preprocessed_data: dict):
     torch.cuda.set_device(0)
     # Load data
     model_config = config["model"]
-    model_config['dims'] = dims[model_config['_dim']]
-    model_config['bn'] = bns[model_config['_bns']]
+    model_config['feature_extractor_dims'] = fe_dims[model_config['fe_dims']]
+    model_config['regression_dims'] = re_dims[model_config['re_dims']]
+    model_config['fe_dropout'] = fe_drop[model_config['fe_drop']]
+    model_config['l2_lambda'] = l2[model_config['l2']]
+    model_config['mmd_lambda'] = mmd[model_config['mmd']]
+    model_config['l2_loss_lambda'] = l2_loss[model_config['l2_loss']]
+    model_config['coral_lambda'] = coral[model_config['coral']]
+
     model_config = common.update_model_config(model_config, preprocessed_data)
     train_dataloader = preprocessed_data["train_dataloader"]
     log.info("Data is preprocessed")
@@ -117,40 +123,70 @@ def tune_hp(config: dict):
     )
 
 
-dims = [
-    [5000, 3000, 1000, 750, 750, 500, 300],
-    [4000, 2000, 1000, 750, 750, 500, 300],
-    [3000, 2000, 1000, 750, 500],
-    [1000, 250, 250, 250, 250, 250, 250, 250, 250, 250],
-    [500, 300, 200],
-    [1000, 500, 1000, 500, 1000, 500],
-    [1000, 700, 500, 300, 200, 150],
-    [2000, 700, 500, 300, 200, 150],
-    [1000, 750, 750, 300, 200, 150],
-    [1000, 750, 750, 500, 200, 150],
-    [1000, 500, 500, 300, 200, 150],
-    [1000, 500, 300, 200, 150],
-    [1000, 500, 300, 300, 200, 150],
+fe_dims = [
+    [1000, 700, 500, 300],
+    [1000, 700, 500, 300],
+    [1000, 750, 600, 400],
+    [1000, 700, 500, 300, 300],
+    [1000, 700, 500, 300, 300, 300]
 ]
 
-bns = [
+re_dims = [
+    [200, 200, 150],
+    [200, 150],
+    [200, 200, 200]
+]
+
+fe_drop = [
     [],
     [],
     [],
     [0],
     [1],
-    [2],
-    [3],
-    [0, 1],
-    [0, 1, 2],
-    [0, 1, 2, 3],
-    [0, 1, 2, 3, 4],
-    [0, 1, 2, 3, 4, 5]
+]
+
+l2 = [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0001,
+    0.0005
+]
+
+mmd = [
+    0.0,
+    0.0,
+    1.0,
+    10.0
+]
+
+l2_loss = [
+    0.0,
+    0.0,
+    0.001,
+    0.005
+]
+
+coral = [
+    0.0,
+    1.0,
+    5.0,
+    10.0
 ]
 
 
 model_search_space = {
-    '_dim': tune.choice(range(len(dims))),
-    '_bns': tune.choice(range(len(bns))),
-    'lr': tune.choice([1e-3, 5e-4, 3e-4, 1e-4]),
+    'fe_dims': tune.choice(range(len(fe_dims))),
+    're_dims': tune.choice(range(len(re_dims))),
+    'fe_drop': tune.choice(range(len(fe_drop))),
+    'l2': tune.choice(range(len(l2))),
+    'mmd': tune.choice(range(len(mmd))),
+    'l2_loss': tune.choice(range(len(l2_loss))),
+    'coral': tune.choice(range(len(coral))),
+    'lr': tune.choice([
+        0.001,
+        0.0005,
+        0.003
+    ])
 }

@@ -7,8 +7,7 @@ import torch
 import yaml  # type: ignore
 from lab_scripts.data import dataloader
 from lab_scripts.mains.mp import preprocessing, tune, common
-from lab_scripts.mains.mp.preprocessing import (
-    base_checkpoint_path, base_config_path)
+from lab_scripts.mains.mp.preprocessing import base_checkpoint_path, base_config_path
 from lab_scripts.models import mp
 from lab_scripts.utils import utils
 from pytorch_lightning.callbacks import LearningRateMonitor
@@ -17,9 +16,6 @@ from scipy.sparse import csr_matrix
 import numpy as np
 
 log = logging.getLogger("mp")
-
-
-
 
 
 def get_logger(config):
@@ -38,25 +34,32 @@ def get_logger(config):
 
 
 def get_callbacks(preprocessed_data: dict, dataset: dict):
-    small_idx = preprocessed_data['small_idx']
-    train_val_callback = mp.TargetCallback(
-        preprocessed_data['small_dataloader'],
-        preprocessed_data['second_train_inverse'],
-        dataset['train_mod2'][small_idx],
-        prefix='train'
+    small_idx = preprocessed_data["small_idx"]
+    train_callback = mp.TargetCallback(
+        preprocessed_data["small_dataloader"],
+        preprocessed_data["second_train_inverse"],
+        dataset["train_mod2"][small_idx],
+        prefix="train",
     )
 
-    test_val_callback = mp.TargetCallback(
-        preprocessed_data['test_dataloader'],
-        preprocessed_data['second_test_inverse'],
-        dataset['test_mod2'],
-        prefix='test'
+    val_callback = mp.TargetCallback(
+        preprocessed_data["val_dataloader"],
+        preprocessed_data["second_val_inverse"],
+        dataset["val_mod2"],
+        prefix="val",
+    )
+
+    test_callback = mp.TargetCallback(
+        preprocessed_data["test_dataloader"],
+        preprocessed_data["second_test_inverse"],
+        dataset["test_mod2"],
+        prefix="test",
     )
 
     learning_rate_monitor = LearningRateMonitor(
         logging_interval="step",
     )
-    callbacks = [train_val_callback, test_val_callback, learning_rate_monitor]
+    callbacks = [train_callback, val_callback, test_callback, learning_rate_monitor]
     return callbacks
 
 
@@ -141,9 +144,7 @@ def evaluate(config: dict):
         "checkpoint_path", base_checkpoint_path + task_type + ".ckpt"
     )
     return
-    model = mp.X_autoencoder.load_from_checkpoint(
-        checkpoint_path, config=model_config
-    )
+    model = mp.X_autoencoder.load_from_checkpoint(checkpoint_path, config=model_config)
     log.info(f"Model is loaded from {checkpoint_path}")
 
     model.eval()
@@ -195,7 +196,11 @@ def train(config: dict):
     torch.cuda.set_device(0)
     # Load data
     data_config = config["data"]
-    dataset = dataloader.load_data(data_config["dataset_name"])
+    dataset = dataloader.load_data(
+        data_config["dataset_name"],
+        val_size=data_config["val_size"],
+        filter_genes=(data_config["gene_fraction"], "data/genes.csv"),
+    )
     log.info("Data is loaded")
 
     # Preprocess data
@@ -230,7 +235,7 @@ def train(config: dict):
         callbacks=callbacks,
         deterministic=True,
         checkpoint_callback=False,
-        gradient_clip_val=model_config['gradient_clip']
+        gradient_clip_val=model_config["gradient_clip"],
     )
     trainer.fit(model, train_dataloaders=train_dataloader)
 
@@ -242,11 +247,10 @@ def train(config: dict):
     log.info(f"Model is saved to {checkpoint_path}")
 
     if model.use_vi_dropout:
-        weights_path = base_checkpoint_path + 'genes.csv'
+        weights_path = base_checkpoint_path + "genes.csv"
         weights = model.vi_dropout.weight.detach().cpu().numpy()
-        np.savetxt(weights_path ,weights, delimiter=',')
+        np.savetxt(weights_path, weights, delimiter=",")
         log.info(f"Genes weights are saved to {weights_path}")
-
 
 
 def get_parser():

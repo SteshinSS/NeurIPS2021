@@ -7,6 +7,7 @@ them into this module, so you need only to call dataloader.load_data('my_dataset
 
 from lab_scripts.utils import utils
 import anndata as ad
+import numpy as np
 
 library = {
     "mp/official/adt_to_gex": {
@@ -44,7 +45,7 @@ COMMON_ATAC = "data/official/common/openproblems_bmmc_multiome_phase1/openproble
 
 
 
-def load_data(name):
+def load_data(name, val_size=None, filter_genes=None):
     """Opens dataset by name.
 
     Current datasets:
@@ -58,7 +59,33 @@ def load_data(name):
     result = dict()
     for name, path in files.items():
         result[name] = ad.read_h5ad(path)
-    return inject_size_factors(result)
+    result = inject_size_factors(result)
+
+    if filter_genes:
+        fraction, path_to_genes = filter_genes
+        weights = np.loadtxt(path_to_genes, delimiter=',')
+        sorted_weights = np.sort(weights)
+        total_len = sorted_weights.shape[0]
+        best = int(total_len * fraction)
+        bound = sorted_weights[-best]
+        print(bound)
+
+        result['train_mod1'].var['weight'] = weights
+        result['train_mod1'] = result['train_mod1'][:, result['train_mod1'].var['weight'] > bound]
+        result['test_mod1'].var['weight'] = weights
+        result['test_mod1'] = result['test_mod1'][:, result['test_mod1'].var['weight'] > bound]
+
+
+    if val_size:
+        idx = np.arange(result['train_mod1'].shape[0])
+        np.random.shuffle(idx)
+        val_idx = idx[:val_size]
+        train_idx = idx[val_size:]
+        result['val_mod1'] = result['train_mod1'][val_idx]
+        result['val_mod2'] = result['train_mod2'][val_idx]
+        result['train_mod1'] = result['train_mod1'][train_idx]
+        result['train_mod2'] = result['train_mod2'][train_idx]
+    return result
 
 
 def inject_size_factors(data: dict):

@@ -1,6 +1,8 @@
 data: 
   dataset_name: mp/official/gex_to_adt
   task_type: gex_to_adt
+  val_size: 512
+  gene_fraction: 0.3
   mod1:
     name: gex
     use_normalized: True
@@ -15,8 +17,10 @@ data:
 
 
 model:
-  dims: [1000, 700, 500, 300, 200, 150]
-  bn: []
+  feature_extractor_dims: [1000, 750, 500, 300, 300]
+  fe_dropout: []
+  regression_dims: [200, 200, 150]
+  regression_dropout: [1]
   activation: leaky_relu
   lr: 0.001
   balance_classes: True
@@ -25,8 +29,20 @@ model:
   release: 500
   batch_size: 256
   gradient_clip: 1.0
-  l2_lambda: 0.0003
-  l1_lambda: 0.0
+
+  l2_lambda: 0.0
+  dropout: 0.5
+
+  use_mmd_loss: True
+  mmd_lambda: 10
+
+  use_l2_loss: False
+  l2_loss_lambda: 0.05
+
+  use_coral_loss: True
+  coral_lambda: 10.0
+
+
   use_vi_dropout: False
   vi_lambda: 0.5
   vi_attack: 30
