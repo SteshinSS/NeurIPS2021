@@ -142,12 +142,12 @@ def mmd_for_two_batches(first, second):
     first_tiled = repeat(first, 'x_cell features -> x_cell y_cell features', y_cell=second.shape[0])
     second_tiled = repeat(second, 'y_cell features -> x_cell y_cell features', x_cell=first.shape[0])
     diff = -torch.mean((first_tiled - second_tiled)**2, dim=2)
-    sigmas = [1, 5, 10, 20]
+    sigmas = [1e-4, 1e-3, 1e-2, 1e-1, 1, 1e1, 1e2]
     result = 0.0
     for sigma in sigmas:
         result += torch.exp(diff / sigma).mean()
 
-    return result
+    return result / len(sigmas)
 
 
 def _generate_sample(loc, std, shape):

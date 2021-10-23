@@ -235,7 +235,7 @@ def train(config: dict):
         callbacks=callbacks,
         deterministic=True,
         checkpoint_callback=False,
-        gradient_clip_val=model_config["gradient_clip"],
+        gradient_clip_val=model_config["gradient_clip"] if not model_config['use_critic'] else 0.0,
     )
     trainer.fit(model, train_dataloaders=train_dataloader)
 
