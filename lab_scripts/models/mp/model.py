@@ -7,6 +7,7 @@ from lab_scripts.metrics.mp import mp_metrics
 from collections import OrderedDict
 from torch.distributions.uniform import Uniform
 from itertools import chain
+from torch.autograd import grad
 
 
 class WDGRLCritic(pl.LightningModule):
@@ -16,9 +17,51 @@ class WDGRLCritic(pl.LightningModule):
         self.total_batches = config['total_batches']
         dims = config['critic_dims']
         dims.insert(0, self.feature_dim)
-        dims.append(1)
         self.nets = nn.ModuleList([construct_net(dims, config['activation'], [], 0) for _ in range(self.total_batches)])       
+        self.to_prediction = nn.ModuleList([
+            nn.Linear(dims[-1], 1) for _ in range(self.total_batches)
+        ])
+    
+    def forward(self, x):
+        predictions = []
+        for net, to_pred in zip(self.nets, self.to_prediction):
+            prediction = net(x)
+            predictions.append(torch.squeeze(to_pred(prediction)))
+        return predictions
 
+    def gradient_penalty(self, features, batch_idx):
+        batch_idx = torch.squeeze(batch_idx)
+        unique_batches = torch.unique(batch_idx)
+        gradient_penalty = 0.0
+        for batch in unique_batches:
+            reference_batch = features[batch_idx == batch]
+            other_batch = features[batch_idx != batch]
+            ref_idx = torch.randint(low=0, high=reference_batch.shape[0], size=[other_batch.shape[0]])
+            difference = reference_batch[ref_idx] - other_batch
+            alpha = torch.rand(difference.shape[0], 1).to(self.device)
+            interpolates = other_batch + alpha * difference
+            interpolates = torch.cat([interpolates, reference_batch, other_batch], dim=0).requires_grad_()
+
+            preds = self.nets[batch](interpolates)
+            preds = self.to_prediction[batch](preds)
+            gradients = grad(preds, interpolates,
+                            grad_outputs=torch.ones_like(preds),
+                            retain_graph=True, create_graph=True)[0]
+            gradient_norm = gradients.norm(2, dim=1)
+            gradient_penalty += ((gradient_norm - 1)**2).mean()
+        return gradient_penalty / unique_batches.shape[0]
+    
+    def calculate_loss(self, predictions, batch_idx):
+        batch_idx = torch.squeeze(batch_idx)
+        unique_batches = torch.unique(batch_idx)
+        wasserstain_distance = 0.0
+        for batch in unique_batches:
+            preds = predictions[batch]
+            reference_batch = preds[batch_idx == batch]
+            other_batch = preds[batch_idx != batch]
+            wasserstain_distance += reference_batch.mean() - other_batch.mean()
+        return wasserstain_distance / unique_batches.shape[0]
+    
 
 class GaninCritic(pl.LightningModule):
     def __init__(self, config: dict):
@@ -52,6 +95,8 @@ class GaninCritic(pl.LightningModule):
 def get_critic(name):
     if name == 'ganin':
         return GaninCritic
+    elif name == 'wdgrl':
+        return WDGRLCritic
     else:
         raise NotImplementedError()
 
@@ -143,6 +188,7 @@ class Predictor(pl.LightningModule):
             self.critic = get_critic(self.critic_type)(config)
             self.critic_parameters = self.critic.parameters()
             self.critic_lambda = config['critic_lambda']
+            self.critic_gamma = config['critic_gamma']
             self.normal_iterations = config['normal_iterations']
             self.critic_iterations = config['critic_iterations']
             self.critic_lr = config['critic_lr']
@@ -165,7 +211,43 @@ class Predictor(pl.LightningModule):
         self.current_batch += 1
         if not self.use_critic:
             return self.normal_step(batch, batch_n)
-        
+        elif self.critic_type == 'ganin':
+            self.ganin_training_step(batch, batch_n)
+        elif self.critic_type == 'wdgrl':
+            self.wdgrl_training_step(batch, batch_n)
+
+    def wdgrl_training_step(self, batch, batch_n):
+        optimizers = self.optimizers()
+        first, second, batch_idx = batch
+        for _ in range(self.critic_iterations):
+            optimizer = optimizers[1]
+            with torch.no_grad():
+                features = self.feature_extractor(first)
+
+            gradient_penalty = self.critic.gradient_penalty(features, batch_idx) * self.critic_gamma
+            critic_preds = self.critic(features)
+            critic_loss = gradient_penalty - self.critic.calculate_loss(critic_preds, batch_idx)
+            self.log('gp', gradient_penalty, logger=True)
+            optimizer.zero_grad()
+            self.manual_backward(critic_loss)
+            torch.nn.utils.clip_grad_norm_(
+                self.critic_parameters, self.gradient_clip, error_if_nonfinite=True
+            )
+            optimizer.step()
+            self.log('critic', critic_loss, logger=True, prog_bar=True)
+
+        for _ in range(self.normal_iterations):
+            optimizer = optimizers[0]
+            loss = self.normal_step(batch, batch_n)
+            optimizer.zero_grad()
+            self.manual_backward(loss)
+            torch.nn.utils.clip_grad_norm_(
+                self.main_parameters, self.gradient_clip, error_if_nonfinite=True
+            )
+            optimizer.step()
+
+    
+    def ganin_training_step(self, batch, batch_n):
         critic_step = (self.current_batch % (self.normal_iterations + self.critic_iterations)) > (self.normal_iterations - 1)
         optimizers = self.optimizers()
         if critic_step:
@@ -192,6 +274,7 @@ class Predictor(pl.LightningModule):
         features = self.feature_extractor(first)
         critic_preds = self.critic(features)
         critic_loss = self.critic.calculate_loss(critic_preds, batch_idx)
+            
         self.log('critic', critic_loss, logger=True, prog_bar=True)
         return critic_loss
 
@@ -229,7 +312,10 @@ class Predictor(pl.LightningModule):
     
     def calculate_critic_loss(self, features, batch_idx):
         critic_preds = self.critic(features)
-        critic_loss = self.critic.calculate_loss(critic_preds, batch_idx, inverse=True) * self.critic_lambda
+        if self.critic_type == 'ganin':
+            critic_loss = self.critic.calculate_loss(critic_preds, batch_idx, inverse=True) * self.critic_lambda
+        else:
+            critic_loss = self.critic.calculate_loss(critic_preds, batch_idx) * self.critic_lambda
         self.log('critic_adv', critic_loss, logger=True, prog_bar=True)
         return critic_loss
     
