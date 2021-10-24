@@ -56,10 +56,15 @@ def get_callbacks(preprocessed_data: dict, dataset: dict):
         prefix="test",
     )
 
+    tsne_callback = mp.BatchEffectCallback(
+        train_dataset=preprocessed_data['train_dataloader'],
+        test_dataset=preprocessed_data['test_shuffled_dataloader']
+    )
+
     learning_rate_monitor = LearningRateMonitor(
         logging_interval="step",
     )
-    callbacks = [train_callback, val_callback, test_callback, learning_rate_monitor]
+    callbacks = [train_callback, val_callback, test_callback, tsne_callback, learning_rate_monitor]
     return callbacks
 
 
@@ -209,7 +214,7 @@ def train(config: dict):
         data_config, dataset, model_config["batch_size"], is_train=True
     )
     train_dataloader = preprocessed_data["train_dataloader"]
-    test_dataloader = preprocessed_data['test_dataloader']
+    test_shuffled_dataloader = preprocessed_data['test_shuffled_dataloader']
     model_config = common.update_model_config(model_config, preprocessed_data)
     log.info("Data is preprocessed")
 
@@ -238,7 +243,7 @@ def train(config: dict):
         checkpoint_callback=False,
         gradient_clip_val=model_config["gradient_clip"] if not model_config['use_critic'] else 0.0,
     )
-    trainer.fit(model, train_dataloaders=[train_dataloader, test_dataloader])
+    trainer.fit(model, train_dataloaders=[train_dataloader, test_shuffled_dataloader])
 
     # Save model
     checkpoint_path = config.get(

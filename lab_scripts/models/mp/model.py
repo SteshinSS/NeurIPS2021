@@ -1,4 +1,5 @@
 import torch
+import pandas as pd
 from torch import nn
 from torch.nn import functional as F
 import pytorch_lightning as pl
@@ -8,6 +9,12 @@ from collections import OrderedDict
 from torch.distributions.uniform import Uniform
 from itertools import chain
 from torch.autograd import grad
+from sklearn.manifold import TSNE
+from sklearn.decomposition import PCA
+import numpy as np
+import matplotlib.pyplot as plt
+import wandb
+import plotly.express as px
 
 
 class WDGRLCritic(pl.LightningModule):
@@ -436,3 +443,70 @@ class TargetCallback(pl.Callback):
         second_pred = self.inverse_transform(second_pred)
         metric = mp_metrics.calculate_target(second_pred, self.target)
         pl_module.log(self.prefix + "_m", metric, logger=True, prog_bar=True)
+
+
+class BatchEffectCallback(pl.Callback):
+    def __init__(self, train_dataset, test_dataset):
+        self.train_dataset = train_dataset
+        self.test_dataset = test_dataset
+        self.current_epoch = 0
+    
+    def on_train_epoch_end(self, trainer, pl_module):
+        self.current_epoch += 1
+        if self.current_epoch % 10 != 0:
+            return
+        all_features = []
+        all_mse = []
+        all_batch_idx = []
+        with torch.no_grad():
+            for i, batch in enumerate(self.train_dataset):
+                source_first, source_second, source_idx = batch
+                source_features = pl_module.forward(source_first.to(pl_module.device))
+                predictions = pl_module.regression(source_features)
+                mse = F.mse_loss(predictions.cpu(), source_second.cpu(), reduction='none').mean(dim=1)
+                all_mse.append(mse)
+                all_features.append(source_features.cpu())
+                all_batch_idx.append(source_idx.cpu())
+            for i, batch in enumerate(self.test_dataset):
+                target_first, target_second, target_idx = batch
+                target_features = pl_module.forward(target_first.to(pl_module.device))
+                predictions = pl_module.regression(target_features)
+                mse = F.mse_loss(predictions.cpu(), target_second.cpu(), reduction='none').mean(dim=1)
+                all_mse.append(mse)
+                all_features.append(target_features.cpu())
+                target_idx += 100
+                all_batch_idx.append(target_idx.cpu())
+        
+        features = torch.cat(all_features, dim=0).numpy()
+        batch_idx = torch.cat(all_batch_idx, dim=0).numpy()
+        mse = torch.cat(all_mse, dim=0).numpy()
+
+        pca = PCA(n_components=50)
+        features = pca.fit_transform(features)
+        tsne = TSNE(n_jobs=-1)
+        embed = tsne.fit_transform(features)
+
+        df = pd.DataFrame({
+            'mse': mse,
+            'batch': batch_idx,
+            'is_test': batch_idx > 90
+        })
+        df['batch'] = df['batch'].astype('category')
+        fig_1 = px.scatter(embed, x=0, y=1, color=df['batch'])
+
+        fig_2 = px.scatter(embed, x=0, y=1, color=df['mse'], text=df['is_test'])
+
+
+        test_idx = batch_idx > 90
+        fig_3 = px.scatter(embed[test_idx], x=0, y=1, color=df['mse'][test_idx], range_color=[0.0, 2.0])
+        fig_4 = px.scatter(embed[~test_idx], x=0, y=1, color=df['mse'][~test_idx], range_color=[0.0, 2.0])
+        trainer.logger.experiment.log({
+            'batch effect': fig_1,
+            'mse': fig_2,
+            'mse_test': fig_3,
+            'mse_train': fig_4,
+        })
+
+
+
+

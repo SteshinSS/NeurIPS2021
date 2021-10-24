@@ -6,7 +6,7 @@ data:
   mod1:
     name: gex
     use_normalized: True
-    scale: True
+    scale: False
     type: float
   mod2:
     name: adt
@@ -29,7 +29,7 @@ model:
   release: 500
   batch_size: 128
   gradient_clip: 1.0
-  inject_test: True
+  inject_test: False
   black_and_white: False
 
   l2_lambda: 0.0
@@ -44,7 +44,7 @@ model:
   use_coral_loss: False
   coral_lambda: 10.0
 
-  use_critic: True
+  use_critic: False
   critic_type: ganin
   critic_lambda: 0.01
   critic_gamma: 1.0

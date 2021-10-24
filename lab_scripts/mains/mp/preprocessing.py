@@ -251,10 +251,12 @@ def preprocess_data(config: dict, dataset, batch_size, is_train):
     if cuda:
         test_dataset.to("cuda")
     test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    test_shuffled_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
 
     result = {
         "train_dataloader": train_dataloader,
         "test_dataloader": test_dataloader,
+        'test_shuffled_dataloader': test_shuffled_dataloader,
         'val_dataloader': val_dataloader,
         "small_dataloader": small_train_dataloader,
         "small_idx": small_idx,
