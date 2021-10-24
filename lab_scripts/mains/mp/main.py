@@ -209,6 +209,7 @@ def train(config: dict):
         data_config, dataset, model_config["batch_size"], is_train=True
     )
     train_dataloader = preprocessed_data["train_dataloader"]
+    test_dataloader = preprocessed_data['test_dataloader']
     model_config = common.update_model_config(model_config, preprocessed_data)
     log.info("Data is preprocessed")
 
@@ -237,7 +238,7 @@ def train(config: dict):
         checkpoint_callback=False,
         gradient_clip_val=model_config["gradient_clip"] if not model_config['use_critic'] else 0.0,
     )
-    trainer.fit(model, train_dataloaders=train_dataloader)
+    trainer.fit(model, train_dataloaders=[train_dataloader, test_dataloader])
 
     # Save model
     checkpoint_path = config.get(

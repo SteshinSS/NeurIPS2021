@@ -153,6 +153,9 @@ class Predictor(pl.LightningModule):
         self.release = config["release"]
         self.balance_classes = config["balance_classes"]
         self.register_buffer("batch_weights", torch.tensor(config["batch_weights"]))
+        self.inject_test = config['inject_test']
+        self.black_and_white = config['black_and_white']
+        self.total_batches = config['total_batches']
 
         self.l2_lambda = config["l2_lambda"]
 
@@ -199,7 +202,7 @@ class Predictor(pl.LightningModule):
         if self.use_vi_dropout:
             x = self.vi_dropout(x)
         features = self.feature_extractor(x)
-        return self.regression(features), features
+        return features
 
     def calculate_weights(self, batch_idx):
         if self.balance_classes:
@@ -269,46 +272,103 @@ class Predictor(pl.LightningModule):
             )
             optimizer.step()
     
+    def get_features(self, source_features, source_idx, target_first, target_idx):
+        if self.inject_test:
+            target_features = self.feature_extractor(target_first)
+            if self.black_and_white:
+                zero_source_idx = torch.ones_like(source_idx)
+                one_target_idx = torch.zeros_like(target_idx)
+                idx = torch.cat([zero_source_idx, one_target_idx], dim=0)
+                features = torch.cat([source_features, target_features], dim=0)
+            else:
+                # Shift source batch idx by number of target indices
+                source_idx += self.total_batches - len(self.batch_weights)
+                idx = torch.cat([source_idx, target_idx], dim=0)
+                features = torch.cat([source_features, target_features], dim=0)
+        else:
+            features = source_features
+            if self.black_and_white:
+                idx = torch.ones_like(source_idx)
+                idx[source_idx == 0] = 0
+            else:
+                idx = source_idx
+        return features, idx
+    
     def critic_step(self, batch, batch_n):
-        first, second, batch_idx = batch
-        features = self.feature_extractor(first)
+        source_first, _, source_idx = batch[0]
+        source_features = self.feature_extractor(source_first)
+        target_first, _, target_idx = batch[1]
+        features, idx = self.get_features(source_features, source_idx, target_first, target_idx)
         critic_preds = self.critic(features)
-        critic_loss = self.critic.calculate_loss(critic_preds, batch_idx)
-            
+        critic_loss = self.critic.calculate_loss(critic_preds, idx)
         self.log('critic', critic_loss, logger=True, prog_bar=True)
         return critic_loss
 
     def normal_step(self, batch, batch_n):
-        first, second, batch_idx = batch
-        predictions, features = self.forward(first)
-        loss = self.calculate_loss(predictions, features, second, batch_idx)
+        source_first, source_second, source_idx = batch[0]
+        source_features = self.forward(source_first)
+        source_predictions = self.regression(source_features)
+        loss = self.calculate_standard_loss(source_predictions, source_second, source_idx)
+
+        target_first, _ , target_idx = batch[1]
+        features, idx = self.get_features(source_features, source_idx, target_first, target_idx)
+                
+        loss += self.calculate_div_loss(features, idx)
         self.log("loss", loss, logger=True)
         return loss
 
-    def calculate_loss(self, predictions, features, target, batch_idx):
-        weights = self.calculate_weights(batch_idx)
-        loss = self.calculate_standard_loss(predictions, target, weights)
+    def calculate_standard_loss(self, source_predictions, source_second, source_idx):
+        weights = self.calculate_weights(source_idx)
+        mse_loss = F.mse_loss(source_predictions, source_second, reduction="none")
+        loss = (torch.unsqueeze(weights, dim=-1) * mse_loss).mean()
 
         if self.use_vi_dropout:
             loss += self.calculate_vi_loss()
+        
+        self.log('reg', loss, logger=True, prog_bar=True)
+        return loss
+    
+    def calculate_vi_loss(self):
+        vi_loss = self.vi_dropout.last_vi_loss
+        vi_loss *= self.vi_lambda
+        if self.current_epoch < self.vi_attack:
+            vi_loss *= self.current_epoch / self.vi_attack
+        self.log("vi", vi_loss, logger=True)
+        return vi_loss
 
+    def calculate_div_loss(self, features, idx):
+        loss = 0.0
         if self.use_mmd_loss:
-            loss += self.calculate_mmd_loss(features, batch_idx)
+            loss += self.calculate_mmd_loss(features, idx)
         
         if self.use_l2_loss:
-            loss += self.calulate_l2_loss(features, batch_idx)
+            loss += self.calulate_l2_loss(features, idx)
         
         if self.use_coral_loss:
-            loss += self.calculate_coral_loss(features, batch_idx)
+            loss += self.calculate_coral_loss(features, idx)
         
         if self.use_critic:
-            loss += self.calculate_critic_loss(features, batch_idx)
+            loss += self.calculate_critic_loss(features, idx)
+        
+        self.log('div', loss, logger=True, prog_bar=True)
         return loss
 
-    def calculate_standard_loss(self, predictions, target, weights):
-        mse_loss = F.mse_loss(predictions, target, reduction="none")
-        mse_loss = torch.unsqueeze(weights, dim=-1) * mse_loss
-        return mse_loss.mean()
+    def calculate_mmd_loss(self, features, batch_idx):
+        mmd_loss = (
+            losses.calculate_mmd_loss(features, batch_idx) * self.mmd_lambda
+        )
+        self.log("mmd", mmd_loss, logger=True)
+        return mmd_loss
+
+    def calulate_l2_loss(self, features, batch_idx):
+        l2_loss = losses.calculate_l2_loss(features, batch_idx) * self.l2_loss_lambda
+        self.log('l2', l2_loss, logger=True)
+        return l2_loss
+
+    def calculate_coral_loss(self, features, batch_idx):
+        coral_loss = losses.calculate_coral_loss(features, batch_idx) * self.coral_lambda
+        self.log('coral', coral_loss, logger=True)
+        return coral_loss
     
     def calculate_critic_loss(self, features, batch_idx):
         critic_preds = self.critic(features)
@@ -318,36 +378,11 @@ class Predictor(pl.LightningModule):
             critic_loss = self.critic.calculate_loss(critic_preds, batch_idx) * self.critic_lambda
         self.log('critic_adv', critic_loss, logger=True, prog_bar=True)
         return critic_loss
-    
-    def calculate_coral_loss(self, features, batch_idx):
-        coral_loss = losses.calculate_coral_loss(features, batch_idx) * self.coral_lambda
-        self.log('coral', coral_loss, logger=True)
-        return coral_loss
-    
-    def calulate_l2_loss(self, features, batch_idx):
-        l2_loss = losses.calculate_l2_loss(features, batch_idx) * self.l2_loss_lambda
-        self.log('l2', l2_loss, logger=True)
-        return l2_loss
-
-    def calculate_vi_loss(self):
-        vi_loss = self.vi_dropout.last_vi_loss
-        vi_loss *= self.vi_lambda
-        if self.current_epoch < self.vi_attack:
-            vi_loss *= self.current_epoch / self.vi_attack
-        self.log("vi", vi_loss.item(), logger=True)
-        return vi_loss
-
-    def calculate_mmd_loss(self, features, batch_idx):
-        mmd_loss = (
-            losses.calculate_mmd_loss(features, batch_idx) * self.mmd_lambda
-        )
-        self.log("mmd", mmd_loss, logger=True)
-        return mmd_loss
 
     def predict_step(self, batch, batch_n):
-        first, _, _ = batch
-        result, _ = self.forward(first.to(self.device))
-        return result
+        features = self.forward(batch.to(self.device))
+        prediction = self.regression(features)
+        return prediction
 
     def training_epoch_end(self, outputs):
         sch = self.lr_schedulers()
@@ -394,7 +429,8 @@ class TargetCallback(pl.Callback):
         second_pred = []
         with torch.no_grad():
             for i, batch in enumerate(self.dataset):
-                prediction = pl_module.predict_step(batch, i)
+                first = batch[0]
+                prediction = pl_module.predict_step(first, i)
                 second_pred.append(prediction.cpu())
         second_pred = torch.cat(second_pred, dim=0)
         second_pred = self.inverse_transform(second_pred)

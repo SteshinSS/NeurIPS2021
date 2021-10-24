@@ -267,6 +267,7 @@ def preprocess_data(config: dict, dataset, batch_size, is_train):
         "second_test_inverse": second_test["inverse"],
         "second_input_features": second_input_features,
         "train_batch_idx": first_train["batch_idx"],
+        'test_batch_idx': first_test['batch_idx'],
         "train_batch_weights": calculate_batch_weights(first_train["batch_idx"]),
     }
     return result
