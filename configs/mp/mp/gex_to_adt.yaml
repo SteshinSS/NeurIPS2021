@@ -1,8 +1,8 @@
 data: 
   dataset_name: mp/official/gex_to_adt
   task_type: gex_to_adt
-  train_batches: [s1d1, s1d2, s3d6, s3d7]
-  test_batches: [s2d4, s2d1]
+  train_batches: [s1d1, s1d2, s2d1, s2d4]
+  test_batches: [s3d6,s3d7]
   batch_correct: [s1d1, s2d1]
   val_size: 512
   gene_fraction: 0.1
@@ -21,7 +21,7 @@ data:
 
 model:
   feature_extractor_dims: [1000, 700, 500, 300]
-  fe_dropout: []
+  fe_dropout: [2]
   regression_dims: [100, 100]
   regression_dropout: []
   activation: leaky_relu
@@ -37,7 +37,7 @@ model:
   dropout: 0.5
 
   use_mmd_loss: True
-  mmd_lambda: 1.0
+  mmd_lambda: 0.5
 
   use_l2_loss: False
   l2_loss_lambda: 0.01
@@ -45,7 +45,7 @@ model:
   use_coral_loss: False
   coral_lambda: 10.0
 
-  use_critic: False
+  use_critic: True
   critic_type: ganin
   critic_lambda: 0.01
   critic_gamma: 1.0
