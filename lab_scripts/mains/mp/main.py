@@ -33,21 +33,24 @@ def get_logger(config):
     return pl_logger
 
 
-def get_callbacks(preprocessed_data: dict, dataset: dict):
+def get_callbacks(preprocessed_data: dict, dataset: dict, model_config: dict, logger=None):
     small_idx = preprocessed_data["small_idx"]
     train_callback = mp.TargetCallback(
-        preprocessed_data["small_dataloader"],
+        preprocessed_data["small_train_dataloader"],
         preprocessed_data["second_train_inverse"],
         dataset["train_mod2"][small_idx],
         prefix="train",
     )
+    callbacks = [train_callback]
 
-    val_callback = mp.TargetCallback(
-        preprocessed_data["val_dataloader"],
-        preprocessed_data["second_val_inverse"],
-        dataset["val_mod2"],
-        prefix="val",
-    )
+    if 'val_dataloader' in preprocessed_data:
+        val_callback = mp.TargetCallback(
+            preprocessed_data["val_dataloader"],
+            preprocessed_data["second_val_inverse"],
+            dataset["val_mod2"],
+            prefix="val",
+        )
+        callbacks.append(val_callback)
 
     test_callback = mp.TargetCallback(
         preprocessed_data["test_dataloader"],
@@ -55,16 +58,21 @@ def get_callbacks(preprocessed_data: dict, dataset: dict):
         dataset["test_mod2"],
         prefix="test",
     )
+    callbacks.append(test_callback)
 
-    tsne_callback = mp.BatchEffectCallback(
-        train_dataset=preprocessed_data['train_dataloader'],
-        test_dataset=preprocessed_data['test_shuffled_dataloader']
-    )
+    if model_config['do_tsne']:
+        tsne_callback = mp.BatchEffectCallback(
+            train_dataset=preprocessed_data['train_unshuffled_dataloader'],
+            test_dataset=preprocessed_data['test_dataloader'],
+            frequency=model_config['tsne_frequency'],
+        )
+        callbacks.append(tsne_callback)
 
-    learning_rate_monitor = LearningRateMonitor(
-        logging_interval="step",
-    )
-    callbacks = [train_callback, val_callback, test_callback, tsne_callback, learning_rate_monitor]
+    if logger is not None:
+        learning_rate_monitor = LearningRateMonitor(
+            logging_interval="step",
+        )
+        callbacks.append(learning_rate_monitor)
     return callbacks
 
 
@@ -201,10 +209,12 @@ def train(config: dict):
     torch.cuda.set_device(0)
     # Load data
     data_config = config["data"]
-    dataset = dataloader.load_data(
-        data_config["dataset_name"],
-        val_size=data_config["val_size"],
-        filter_genes=(data_config["gene_fraction"], "data/genes.csv"),
+    dataset = dataloader.load_custom_data(
+        task_type=data_config['task_type'],
+        train_batches=data_config['train_batches'],
+        test_batches=data_config['test_batches'],
+        filter_genes_params=(data_config["gene_fraction"], "data/genes.csv"),
+        val_size=data_config['val_size']
     )
     log.info("Data is loaded")
 
@@ -213,21 +223,14 @@ def train(config: dict):
     preprocessed_data = preprocessing.preprocess_data(
         data_config, dataset, model_config["batch_size"], is_train=True
     )
-    train_dataloader = preprocessed_data["train_dataloader"]
-    test_shuffled_dataloader = preprocessed_data['test_shuffled_dataloader']
+    train_dataloaders = [preprocessed_data["train_shuffled_dataloader"]]
+    train_dataloaders.extend(preprocessed_data['correction_dataloaders'])
     model_config = common.update_model_config(model_config, preprocessed_data)
     log.info("Data is preprocessed")
 
     # Configure training
     pl_logger = get_logger(config)
-    callbacks = get_callbacks(preprocessed_data, dataset)
-    if not pl_logger:
-        callbacks.pop()
-
-    use_gpu = torch.cuda.is_available()
-    if not use_gpu:
-        log.warning("GPU is not detected.")
-    use_gpu = int(use_gpu)  # type: ignore
+    callbacks = get_callbacks(preprocessed_data, dataset, model_config, pl_logger)
 
     # Train model
     model = mp.Predictor(model_config)
@@ -235,7 +238,7 @@ def train(config: dict):
         pl_logger.watch(model)
 
     trainer = pl.Trainer(
-        gpus=use_gpu,
+        gpus=1,
         max_epochs=5000,
         logger=pl_logger,
         callbacks=callbacks,
@@ -243,7 +246,7 @@ def train(config: dict):
         checkpoint_callback=False,
         gradient_clip_val=model_config["gradient_clip"] if not model_config['use_critic'] else 0.0,
     )
-    trainer.fit(model, train_dataloaders=[train_dataloader, test_shuffled_dataloader])
+    trainer.fit(model, train_dataloaders=train_dataloaders)
 
     # Save model
     checkpoint_path = config.get(

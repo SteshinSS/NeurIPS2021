@@ -1,12 +1,15 @@
 data: 
   dataset_name: mp/official/gex_to_adt
   task_type: gex_to_adt
+  train_batches: [s1d1, s1d2, s3d6, s3d7]
+  test_batches: [s2d4, s2d1]
+  batch_correct: [s1d1, s2d1]
   val_size: 512
   gene_fraction: 0.1
   mod1:
     name: gex
     use_normalized: True
-    scale: False
+    scale: True
     type: float
   mod2:
     name: adt
@@ -17,26 +20,24 @@ data:
 
 
 model:
-  feature_extractor_dims: [2000, 700, 500, 300]
-  fe_dropout: [2]
+  feature_extractor_dims: [1000, 700, 500, 300]
+  fe_dropout: []
   regression_dims: [100, 100]
   regression_dropout: []
-  activation: selu
+  activation: leaky_relu
   lr: 0.001
   balance_classes: True
   attack: 10
   sustain: 1500
   release: 500
-  batch_size: 128
+  batch_size: 32
   gradient_clip: 1.0
-  inject_test: False
-  black_and_white: False
 
   l2_lambda: 0.0
   dropout: 0.5
 
-  use_mmd_loss: False
-  mmd_lambda: 0.1
+  use_mmd_loss: True
+  mmd_lambda: 1.0
 
   use_l2_loss: False
   l2_loss_lambda: 0.01
@@ -57,3 +58,6 @@ model:
   use_vi_dropout: False
   vi_lambda: 0.5
   vi_attack: 30
+
+  do_tsne: False
+  tsne_frequency: 10

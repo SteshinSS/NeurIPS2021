@@ -14,7 +14,9 @@ class Processor:
     Does model-depending data preprocessing.
     """
 
-    def __init__(self, config: dict, mod: str):
+    def __init__(self, config: dict, mod: str = None):
+        if mod is None:
+            mod = config['name']
         self.top_n_genes = config.get("top_n_genes", None)
         self.use_normalized = config["use_normalized"]
         self.scale = config["scale"]
@@ -103,6 +105,18 @@ class Processor:
             return dataset.X.toarray().astype(self.type)
         else:
             return dataset.layers["counts"].toarray().astype(self.type)
+
+
+class OneOmicDataset(Dataset):
+    def __init__(self, first: torch.Tensor):
+        super().__init__()
+        self.first = first
+    
+    def __len__(self):
+        return self.first.shape[0]
+    
+    def __getitem__(self, idx):
+        return self.first[idx]
 
 
 class TwoOmicsDataset(Dataset):

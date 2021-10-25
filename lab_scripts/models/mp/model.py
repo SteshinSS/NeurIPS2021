@@ -74,7 +74,7 @@ class GaninCritic(pl.LightningModule):
     def __init__(self, config: dict):
         super().__init__()
         self.feature_dim = config['feature_extractor_dims'][-1]
-        self.total_batches = config['total_batches']
+        self.total_batches = config['total_correction_batches']
         dims = config['critic_dims']
         dims.insert(0, self.feature_dim)
         self.nets = nn.ModuleList([construct_net(dims, config['activation'], [], 0) for _ in range(self.total_batches)])
@@ -95,7 +95,7 @@ class GaninCritic(pl.LightningModule):
             if inverse:
                 true = ~true
             weights = (~true).sum() / (true).sum()
-            loss += F.binary_cross_entropy_with_logits(prediction, true.to(torch.float32), pos_weight=weights)
+            loss += F.binary_cross_entropy_with_logits(prediction, true.to(torch.float32).flatten(), pos_weight=weights)
         return loss
 
 
@@ -160,9 +160,7 @@ class Predictor(pl.LightningModule):
         self.release = config["release"]
         self.balance_classes = config["balance_classes"]
         self.register_buffer("batch_weights", torch.tensor(config["batch_weights"]))
-        self.inject_test = config['inject_test']
-        self.black_and_white = config['black_and_white']
-        self.total_batches = config['total_batches']
+        self.total_correct_batches = config['total_correction_batches']
 
         self.l2_lambda = config["l2_lambda"]
 
@@ -199,10 +197,10 @@ class Predictor(pl.LightningModule):
             self.critic_parameters = self.critic.parameters()
             self.critic_lambda = config['critic_lambda']
             self.critic_gamma = config['critic_gamma']
+            self.critic_lr = config['critic_lr']
             self.normal_iterations = config['normal_iterations']
             self.critic_iterations = config['critic_iterations']
-            self.critic_lr = config['critic_lr']
-        
+            self.do_all_steps = (self.normal_iterations == 0) and (self.critic_iterations == 0)
         self.current_batch = -1
 
     def forward(self, x):
@@ -220,58 +218,38 @@ class Predictor(pl.LightningModule):
     def training_step(self, batch, batch_n):
         self.current_batch += 1
         if not self.use_critic:
-            return self.normal_step(batch, batch_n)
+            return self.automatic_step(batch, batch_n)
         elif self.critic_type == 'ganin':
             self.ganin_training_step(batch, batch_n)
-        elif self.critic_type == 'wdgrl':
-            self.wdgrl_training_step(batch, batch_n)
-
-    def wdgrl_training_step(self, batch, batch_n):
-        optimizers = self.optimizers()
-        first, second, batch_idx = batch
-        for _ in range(self.critic_iterations):
-            optimizer = optimizers[1]
-            with torch.no_grad():
-                features = self.feature_extractor(first)
-
-            gradient_penalty = self.critic.gradient_penalty(features, batch_idx) * self.critic_gamma
-            critic_preds = self.critic(features)
-            critic_loss = gradient_penalty - self.critic.calculate_loss(critic_preds, batch_idx)
-            self.log('gp', gradient_penalty, logger=True)
-            optimizer.zero_grad()
-            self.manual_backward(critic_loss)
-            torch.nn.utils.clip_grad_norm_(
-                self.critic_parameters, self.gradient_clip, error_if_nonfinite=True
-            )
-            optimizer.step()
-            self.log('critic', critic_loss, logger=True, prog_bar=True)
-
-        for _ in range(self.normal_iterations):
-            optimizer = optimizers[0]
-            loss = self.normal_step(batch, batch_n)
-            optimizer.zero_grad()
-            self.manual_backward(loss)
-            torch.nn.utils.clip_grad_norm_(
-                self.main_parameters, self.gradient_clip, error_if_nonfinite=True
-            )
-            optimizer.step()
+        else:
+            raise NotImplementedError()
 
     
     def ganin_training_step(self, batch, batch_n):
-        critic_step = (self.current_batch % (self.normal_iterations + self.critic_iterations)) > (self.normal_iterations - 1)
+        main_batch = batch[0]
+        correction_batches = batch[1:]
+        if self.do_all_steps:
+            is_normal = True
+            is_critic = True 
+        else:
+            is_normal = self.current_batch % (self.normal_iterations + self.critic_iterations) > (self.critic_iterations - 1)
+            is_critic = ~is_normal
+
         optimizers = self.optimizers()
-        if critic_step:
+        if is_critic:
             optimizer = optimizers[1]
-            loss = self.critic_step(batch, batch_n)
+            loss = self.critic_step(correction_batches, batch_n)
             optimizer.zero_grad()
             self.manual_backward(loss)
             torch.nn.utils.clip_grad_norm_(
                 self.critic_parameters, self.gradient_clip, error_if_nonfinite=True
             )
             optimizer.step()
-        else:
+        
+        if is_normal:
             optimizer = optimizers[0]
-            loss = self.normal_step(batch, batch_n)
+            loss = self.normal_step(main_batch)
+            loss += self.correction_step(correction_batches)
             optimizer.zero_grad()
             self.manual_backward(loss)
             torch.nn.utils.clip_grad_norm_(
@@ -279,50 +257,42 @@ class Predictor(pl.LightningModule):
             )
             optimizer.step()
     
-    def get_features(self, source_features, source_idx, target_first, target_idx):
-        if self.inject_test:
-            target_features = self.feature_extractor(target_first)
-            if self.black_and_white:
-                zero_source_idx = torch.ones_like(source_idx)
-                one_target_idx = torch.zeros_like(target_idx)
-                idx = torch.cat([zero_source_idx, one_target_idx], dim=0)
-                features = torch.cat([source_features, target_features], dim=0)
-            else:
-                # Shift source batch idx by number of target indices
-                source_idx += self.total_batches - len(self.batch_weights)
-                idx = torch.cat([source_idx, target_idx], dim=0)
-                features = torch.cat([source_features, target_features], dim=0)
-        else:
-            features = source_features
-            if self.black_and_white:
-                idx = torch.ones_like(source_idx)
-                idx[source_idx == 0] = 0
-            else:
-                idx = source_idx
-        return features, idx
     
-    def critic_step(self, batch, batch_n):
-        source_first, _, source_idx = batch[0]
-        source_features = self.feature_extractor(source_first)
-        target_first, _, target_idx = batch[1]
-        features, idx = self.get_features(source_features, source_idx, target_first, target_idx)
+    def critic_step(self, correction_batches, batch_n):
+        cor_first = torch.cat(correction_batches, dim=0)
+        features = self.feature_extractor(cor_first)
         critic_preds = self.critic(features)
-        critic_loss = self.critic.calculate_loss(critic_preds, idx)
+
+        cor_idx = []
+        for i, batch in enumerate(correction_batches):
+            cor_idx.append(torch.ones((batch.shape[0], 1), device=self.device) * i)
+        cor_idx = torch.cat(cor_idx, dim=0)
+        critic_loss = self.critic.calculate_loss(critic_preds, cor_idx)
         self.log('critic', critic_loss, logger=True, prog_bar=True)
         return critic_loss
 
-    def normal_step(self, batch, batch_n):
-        source_first, source_second, source_idx = batch[0]
-        source_features = self.forward(source_first)
-        source_predictions = self.regression(source_features)
-        loss = self.calculate_standard_loss(source_predictions, source_second, source_idx)
-
-        target_first, _ , target_idx = batch[1]
-        features, idx = self.get_features(source_features, source_idx, target_first, target_idx)
-                
-        loss += self.calculate_div_loss(features, idx)
+    def automatic_step(self, batch, batch_n):
+        main_batch = batch[0]
+        correction_batches = batch[1:]
+        loss = self.normal_step(main_batch)
+        loss += self.correction_step(correction_batches)
         self.log("loss", loss, logger=True)
         return loss
+    
+    def normal_step(self, main_batch):
+        first, second, batch_idx = main_batch
+        features = self.forward(first)
+        predictions = self.regression(features)
+        return self.calculate_standard_loss(predictions, second, batch_idx)
+
+    def correction_step(self, correction_batches):
+        cor_first = torch.cat(correction_batches, dim=0)
+        cor_features = self.forward(cor_first)
+        cor_idx = []
+        for i, batch in enumerate(correction_batches):
+            cor_idx.append(torch.ones((batch.shape[0], 1), device=self.device) * i)
+        cor_idx = torch.cat(cor_idx, dim=0).flatten()
+        return self.calculate_div_loss(cor_features, cor_idx)
 
     def calculate_standard_loss(self, source_predictions, source_second, source_idx):
         weights = self.calculate_weights(source_idx)
@@ -446,14 +416,15 @@ class TargetCallback(pl.Callback):
 
 
 class BatchEffectCallback(pl.Callback):
-    def __init__(self, train_dataset, test_dataset):
+    def __init__(self, train_dataset, test_dataset, frequency):
         self.train_dataset = train_dataset
         self.test_dataset = test_dataset
-        self.current_epoch = 0
+        self.current_epoch = -1
+        self.frequency = frequency
     
     def on_train_epoch_end(self, trainer, pl_module):
         self.current_epoch += 1
-        if self.current_epoch % 10 != 0:
+        if self.current_epoch % self.frequency != 0:
             return
         all_features = []
         all_mse = []
@@ -486,6 +457,8 @@ class BatchEffectCallback(pl.Callback):
         tsne = TSNE(n_jobs=-1)
         embed = tsne.fit_transform(features)
 
+        test_idx = batch_idx > 90
+
         df = pd.DataFrame({
             'mse': mse,
             'batch': batch_idx,
@@ -497,7 +470,6 @@ class BatchEffectCallback(pl.Callback):
         fig_2 = px.scatter(embed, x=0, y=1, color=df['mse'], text=df['is_test'])
 
 
-        test_idx = batch_idx > 90
         fig_3 = px.scatter(embed[test_idx], x=0, y=1, color=df['mse'][test_idx], range_color=[0.0, 2.0])
         fig_4 = px.scatter(embed[~test_idx], x=0, y=1, color=df['mse'][~test_idx], range_color=[0.0, 2.0])
         trainer.logger.experiment.log({
