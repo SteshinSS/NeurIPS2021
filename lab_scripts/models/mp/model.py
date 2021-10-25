@@ -426,6 +426,7 @@ class BatchEffectCallback(pl.Callback):
         self.current_epoch += 1
         if self.current_epoch % self.frequency != 0:
             return
+        pl_module.eval()
         all_features = []
         all_mse = []
         all_batch_idx = []

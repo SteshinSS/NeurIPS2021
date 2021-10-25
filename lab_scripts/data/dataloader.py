@@ -69,36 +69,40 @@ def select_batches(dataset, batches):
 
 
 def load_custom_data(task_type, train_batches, test_batches, filter_genes_params=None, val_size=None):
-    if task_type != 'gex_to_adt':
+    if task_type == 'gex_to_adt':
+        first = ad.read_h5ad(COMMON_GEX_ADT)
+        first = filter_genes(first, filter_genes_params)
+        second = ad.read_h5ad(COMMON_ADT)
+    elif task_type == 'adt_to_gex':
+        first = ad.read_h5ad(COMMON_ADT)
+        second = ad.read_h5ad(COMMON_GEX_ADT)
+        second = filter_genes(second, filter_genes_params)
+    else:
         raise NotImplementedError()
-    
-    gex = ad.read_h5ad(COMMON_GEX_ADT)
-    adt = ad.read_h5ad(COMMON_ADT)
+        
+    train_first = select_batches(first, train_batches)
+    test_first = select_batches(first, test_batches)
 
-    gex = filter_genes(gex, filter_genes_params)
-    train_gex = select_batches(gex, train_batches)
-    test_gex = select_batches(gex, test_batches)
-
-    train_adt = select_batches(adt, train_batches)
-    test_adt = select_batches(adt, test_batches)
+    train_second = select_batches(second, train_batches)
+    test_second = select_batches(second, test_batches)
 
     result = {
-        'test_mod1': test_gex,
-        'test_mod2': test_adt,
+        'test_mod1': test_first,
+        'test_mod2': test_second,
     }
 
     if val_size:
-        all_idx = np.arange(train_adt.shape[0])
+        all_idx = np.arange(train_second.shape[0])
         np.random.shuffle(all_idx)
         val_idx = all_idx[:val_size]
         train_idx = all_idx[val_size:]
-        result['train_mod1'] = train_gex[train_idx]
-        result['val_mod1'] = train_gex[val_idx]
-        result['train_mod2'] = train_adt[train_idx]
-        result['val_mod2'] = train_adt[val_idx]
+        result['train_mod1'] = train_first[train_idx]
+        result['val_mod1'] = train_first[val_idx]
+        result['train_mod2'] = train_second[train_idx]
+        result['val_mod2'] = train_second[val_idx]
     else:
-        result['train_mod1'] = train_gex
-        result['train_mod2'] = train_adt
+        result['train_mod1'] = train_first
+        result['train_mod2'] = train_second
     return result
 
 
