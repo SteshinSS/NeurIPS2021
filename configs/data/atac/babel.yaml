@@ -1,0 +1,11 @@
+fragments_min_value: 200
+
+fragments_max_value: 100000
+
+frip_min_value: 0.2
+
+blacklist_max_value: 0.025 
+
+nucleosome_max_value: 4
+
+tss_min_value: 1.5
