@@ -13,7 +13,6 @@ from lab_scripts.utils import utils
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 from scipy.sparse import csr_matrix
-import numpy as np
 
 log = logging.getLogger("mm")
 
@@ -28,8 +27,9 @@ def get_logger(config):
             tags=["baseline"],
             config_exclude_keys=["wandb"],
         )
-        pl_logger.experiment.define_metric(name="train_m", summary="min")
-        pl_logger.experiment.define_metric(name="test_m", summary="min")
+        pl_logger.experiment.define_metric(name="test_top0.05", summary="max")
+        pl_logger.experiment.define_metric(name="test_top0.01", summary="max")
+        pl_logger.experiment.define_metric(name="test_top0.1", summary="max")
     return pl_logger
 
 
@@ -112,6 +112,7 @@ def predict_submission(
 
 
 def evaluate(config: dict):
+    pass
     # Load data
 
 
