@@ -51,7 +51,9 @@ class Clip(pl.LightningModule):
 
     def forward(self, first, second):
         first_embed = self.first_net(first)
+        first_embed = first_embed / torch.linalg.norm(first_embed, dim=1, keepdim=True)
         second_embed = self.second_net(second)
+        second_embed = second_embed / torch.linalg.norm(second_embed, dim=1, keepdim=True)
         return first_embed, second_embed
 
     def training_step(self, batch, batch_n):
