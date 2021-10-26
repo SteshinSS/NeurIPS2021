@@ -6,13 +6,17 @@ import pytorch_lightning as pl
 import torch
 import yaml  # type: ignore
 from lab_scripts.data import dataloader
-from lab_scripts.mains.mm import preprocessing, tune, common
-from lab_scripts.mains.mm.preprocessing import base_checkpoint_path, base_config_path
+from lab_scripts.mains.mm import common, preprocessing, tune
+from lab_scripts.mains.mm.preprocessing import (base_checkpoint_path,
+                                                base_config_path)
+from lab_scripts.metrics import mm
 from lab_scripts.models import clip
 from lab_scripts.utils import utils
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 from scipy.sparse import csr_matrix
+import numpy as np
+from torch import nn
 
 log = logging.getLogger("mm")
 
@@ -44,13 +48,20 @@ def get_callbacks(preprocessed_data: dict, model_config: dict, logger=None):
 
     if "val_dataloader" in preprocessed_data:
         val_callback = clip.TargetCallback(
-            preprocessed_data["val_dataloader"], model_config["predict_temperature"], "val", log_top=[0.05, 0.01]
+            preprocessed_data["val_dataloader"],
+            model_config["predict_temperature"],
+            "val",
+            log_top=[0.05, 0.01],
         )
         callbacks.append(val_callback)
 
     log_preds = logger is not None
     test_callback = clip.TargetCallback(
-        preprocessed_data["test_dataloader"], model_config["predict_temperature"], "test", log_top=[0.1, 0.05, 0.01], log_preds=log_preds
+        preprocessed_data["test_dataloader"],
+        model_config["predict_temperature"],
+        "test",
+        log_top=[0.1, 0.05, 0.01],
+        log_preds=log_preds,
     )
     callbacks.append(test_callback)
 
@@ -112,8 +123,94 @@ def predict_submission(
 
 
 def evaluate(config: dict):
-    pass
+    torch.cuda.set_device(0)
     # Load data
+    data_config = config["data"]
+    dataset = dataloader.load_custom_mm_data(
+        data_config["task_type"],
+        data_config["train_batches"],
+        data_config["test_batches"],
+        filter_genes_params=(data_config["gene_fraction"], "data/genes.csv"),
+        val_size=0,
+    )
+    log.info("Data is loaded")
+
+    # Preprocess data
+    model_config = config["model"]
+    preprocessed_data = preprocessing.preprocess_data(
+        data_config, dataset, model_config["batch_size"], is_train=False
+    )
+    model_config = common.update_model_config(model_config, preprocessed_data)
+    log.info("Data is preprocessed")
+
+    # Load model
+    checkpoint_path = config.get(
+        "checkpoint_path", base_checkpoint_path + data_config["task_type"] + ".ckpt"
+    )
+    model = clip.Clip.load_from_checkpoint(checkpoint_path, config=model_config)
+
+    def run_for_dataset(dataset, prefix, temps=None):
+        first_pred = []
+        second_pred = []
+        all_batches = []
+        with torch.no_grad():
+            for i, batch in enumerate(dataset):  # type: ignore
+                first, second, batch_idx = batch
+                first, second = model(first, second)
+                first_pred.append(first.cpu())
+                second_pred.append(second.cpu())
+                all_batches.append(batch_idx.cpu())
+        first = torch.cat(first_pred, dim=0)  # type: ignore
+        second = torch.cat(second_pred, dim=0)  # type: ignore
+        all_batches = torch.cat(all_batches, dim=0)  # type: ignore
+        embeddings = first @ second.t()  # type: ignore
+        unique_batches = torch.unique(all_batches)
+        for batch in unique_batches:
+            idx = all_batches == batch
+            embeddings[idx][:, ~idx] = -1e9
+        print(f"{prefix} metric:")
+        if temps:
+            for temp in temps:
+                print(f"Temp: {temp}", calculate_metric(embeddings, temp))
+        else:
+            best_temp = find_best_temperature(embeddings[:512].cuda())
+            print(f"Final metric: ", calculate_metric(embeddings, best_temp))
+
+    run_for_dataset(preprocessed_data["train_unshuffled_dataloader"], 'Train')
+    run_for_dataset(preprocessed_data["test_dataloader"], "Test")
+
+
+def calculate_metric(embeddings, temperature):
+    init = torch.eye(embeddings.shape[0])
+    final_predictions = embeddings * np.exp(temperature)
+    final_predictions = torch.softmax(final_predictions, dim=1)
+    return mm.calculate_target(final_predictions.numpy(), init.numpy())
+
+class TempModule(nn.Module):
+    def __init__(self, embeddings):
+        super().__init__()
+        self.embeddings = embeddings
+        self.t = nn.Parameter(torch.ones([]) * 10)
+    
+    def forward(self):
+        loss = torch.softmax(self.embeddings * torch.exp(self.t), dim=0)
+        return -loss.diag().sum()
+
+
+def find_best_temperature(embeddings):
+    module = TempModule(embeddings).cuda()
+    optimizer = torch.optim.SGD(module.parameters(), lr=0.04)
+    for i in range(100):
+        pred = module()
+        optimizer.zero_grad()
+        pred.backward()
+        optimizer.step()
+        print(pred.item())
+    print()
+    best_temp = module.t.item()
+    print(f'Best temp: {best_temp}')
+    return best_temp
+    
 
 
 def train(config: dict):
@@ -123,9 +220,9 @@ def train(config: dict):
     # Load data
     data_config = config["data"]
     dataset = dataloader.load_custom_mm_data(
-        data_config['task_type'],
-        data_config['train_batches'],
-        data_config['test_batches'],
+        data_config["task_type"],
+        data_config["train_batches"],
+        data_config["test_batches"],
         filter_genes_params=(data_config["gene_fraction"], "data/genes.csv"),
         val_size=data_config["val_size"],
     )

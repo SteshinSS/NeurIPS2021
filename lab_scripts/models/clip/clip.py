@@ -70,6 +70,10 @@ class Clip(pl.LightningModule):
         if self.learn_temperature:
             self.log('temp', self.temperature, logger=True, prog_bar=False)
         return loss
+    
+    def predict_step(self, batch, batch_n):
+        first, second, batch_idx = batch
+        return self(first, second)
 
     def calculate_loss(self, first_embed, second_embed):
         logits = (first_embed @ second_embed.t()) * torch.exp(self.temperature)

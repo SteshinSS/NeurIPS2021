@@ -196,7 +196,7 @@ def preprocess_data(config: dict, dataset, batch_size, is_train):
         test_dataset, batch_size=batch_size, shuffle=False
     )
 
-    if config["val_size"] > 0:
+    if 'val_sol' in dataset:
         val_sorted_idx = dataset['val_sol'].uns['pairing_ix'].astype(np.int32)
         dataset['val_mod2'] = dataset['val_mod2'][val_sorted_idx]
         first_val = preprocess_one_dataset(first_processor, dataset["val_mod1"])
