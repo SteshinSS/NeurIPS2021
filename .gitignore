@@ -3,6 +3,7 @@ data/official
 
 # do not sync pipeline output
 pipelines/modality_prediction/*
+pipelines/modality_matching/*
 
 # ...but sync scripts
 !pipelines/*/lab_scripts

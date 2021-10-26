@@ -9,7 +9,49 @@ from lab_scripts.utils import utils
 import anndata as ad
 import numpy as np
 
-library = {
+mm_library = {
+    "mm/official/adt_to_gex": {
+        "train_mod1": "data/official/match_modality/openproblems_bmmc_cite_phase1_mod2/openproblems_bmmc_cite_phase1_mod2.censor_dataset.output_train_mod1.h5ad",
+        "train_mod2": "data/official/match_modality/openproblems_bmmc_cite_phase1_mod2/openproblems_bmmc_cite_phase1_mod2.censor_dataset.output_train_mod2.h5ad",
+        "train_sol": "data/official/match_modality/openproblems_bmmc_cite_phase1_mod2/openproblems_bmmc_cite_phase1_mod2.censor_dataset.output_train_sol.h5ad",
+        "test_mod1": "data/official/match_modality/openproblems_bmmc_cite_phase1_mod2/openproblems_bmmc_cite_phase1_mod2.censor_dataset.output_test_mod1.h5ad",
+        "test_mod2": "data/official/match_modality/openproblems_bmmc_cite_phase1_mod2/openproblems_bmmc_cite_phase1_mod2.censor_dataset.output_test_mod2.h5ad",
+        "test_sol": "data/official/match_modality/openproblems_bmmc_cite_phase1_mod2/openproblems_bmmc_cite_phase1_mod2.censor_dataset.output_test_sol.h5ad",
+    },
+    "mm/official/gex_to_adt": {
+        "train_mod1": "data/official/match_modality/openproblems_bmmc_cite_phase1_rna/openproblems_bmmc_cite_phase1_rna.censor_dataset.output_train_mod1.h5ad",
+        "train_mod2": "data/official/match_modality/openproblems_bmmc_cite_phase1_rna/openproblems_bmmc_cite_phase1_rna.censor_dataset.output_train_mod2.h5ad",
+        "train_sol": "data/official/match_modality/openproblems_bmmc_cite_phase1_rna/openproblems_bmmc_cite_phase1_rna.censor_dataset.output_train_sol.h5ad",
+        "test_mod1": "data/official/match_modality/openproblems_bmmc_cite_phase1_rna/openproblems_bmmc_cite_phase1_rna.censor_dataset.output_test_mod1.h5ad",
+        "test_mod2": "data/official/match_modality/openproblems_bmmc_cite_phase1_rna/openproblems_bmmc_cite_phase1_rna.censor_dataset.output_test_mod2.h5ad",
+        "test_sol": "data/official/match_modality/openproblems_bmmc_cite_phase1_rna/openproblems_bmmc_cite_phase1_rna.censor_dataset.output_test_sol.h5ad",
+    },
+}
+
+
+def load_mm_data(name, val_size=None, filter_genes_params=None):
+    files = mm_library[name]
+    result = dict()
+    for name, path in files.items():
+        result[name] = ad.read_h5ad(path)
+    return result
+
+def load_custom_mm_data(task_type, train_batches, test_batches, filter_genes_params=None, val_size=None):
+    result = load_custom_mp_data(task_type, train_batches, test_batches, filter_genes_params, val_size)
+    train_n = result['train_mod1'].shape[0]
+    train_pairing_ix = np.arange(train_n)
+    result['train_sol'] = ad.AnnData(np.eye(train_n), uns={'pairing_ix': train_pairing_ix})
+    
+    test_n = result['test_mod1'].shape[0]
+    test_pairing_ix = np.arange(test_n)
+    result['test_sol'] = ad.AnnData(np.eye(test_n), uns={'pairing_ix': test_pairing_ix})
+    if val_size:
+        val_pairing_ix = np.arange(val_size)
+        result['val_sol'] = ad.AnnData(np.eye(val_size), uns={'pairing_ix': val_pairing_ix})
+    return result
+
+
+mp_library = {
     "mp/official/adt_to_gex": {
         "train_mod1": "data/official/predict_modality/openproblems_bmmc_cite_phase1_mod2/openproblems_bmmc_cite_phase1_mod2.censor_dataset.output_train_mod1.h5ad",
         "train_mod2": "data/official/predict_modality/openproblems_bmmc_cite_phase1_mod2/openproblems_bmmc_cite_phase1_mod2.censor_dataset.output_train_mod2.h5ad",
@@ -49,37 +91,39 @@ def filter_genes(gex_dataset, filter_genes_params):
     fraction, path_to_genes = filter_genes_params
     if fraction >= 1.0:
         return gex_dataset
-        
-    weights = np.loadtxt(path_to_genes, delimiter=',')
+
+    weights = np.loadtxt(path_to_genes, delimiter=",")
     sorted_weights = np.sort(weights)
     total_len = sorted_weights.shape[0]
     best = int(total_len * fraction)
     bound = sorted_weights[-best]
     print(bound)
 
-    gex_dataset.var['weight'] = weights
+    gex_dataset.var["weight"] = weights
     gex_dataset = gex_dataset[:, weights > bound]
     return gex_dataset
 
 
 def select_batches(dataset, batches):
-    dataset_batches = dataset.obs['batch'].astype('string')
+    dataset_batches = dataset.obs["batch"].astype("string")
     selected_idx = dataset_batches.apply(lambda batch: batch in batches).values
     return dataset[selected_idx]
 
 
-def load_custom_data(task_type, train_batches, test_batches, filter_genes_params=None, val_size=None):
-    if task_type == 'gex_to_adt':
+def load_custom_mp_data(
+    task_type, train_batches, test_batches, filter_genes_params=None, val_size=None
+):
+    if task_type == "gex_to_adt":
         first = ad.read_h5ad(COMMON_GEX_ADT)
         first = filter_genes(first, filter_genes_params)
         second = ad.read_h5ad(COMMON_ADT)
-    elif task_type == 'adt_to_gex':
+    elif task_type == "adt_to_gex":
         first = ad.read_h5ad(COMMON_ADT)
         second = ad.read_h5ad(COMMON_GEX_ADT)
         second = filter_genes(second, filter_genes_params)
     else:
         raise NotImplementedError()
-        
+
     train_first = select_batches(first, train_batches)
     test_first = select_batches(first, test_batches)
 
@@ -87,8 +131,8 @@ def load_custom_data(task_type, train_batches, test_batches, filter_genes_params
     test_second = select_batches(second, test_batches)
 
     result = {
-        'test_mod1': test_first,
-        'test_mod2': test_second,
+        "test_mod1": test_first,
+        "test_mod2": test_second,
     }
 
     if val_size:
@@ -96,17 +140,19 @@ def load_custom_data(task_type, train_batches, test_batches, filter_genes_params
         np.random.shuffle(all_idx)
         val_idx = all_idx[:val_size]
         train_idx = all_idx[val_size:]
-        result['train_mod1'] = train_first[train_idx]
-        result['val_mod1'] = train_first[val_idx]
-        result['train_mod2'] = train_second[train_idx]
-        result['val_mod2'] = train_second[val_idx]
+        result["train_mod1"] = train_first[train_idx]
+        result["val_mod1"] = train_first[val_idx]
+        result["train_mod2"] = train_second[train_idx]
+        result["val_mod2"] = train_second[val_idx]
     else:
-        result['train_mod1'] = train_first
-        result['train_mod2'] = train_second
+        result["train_mod1"] = train_first
+        result["train_mod2"] = train_second
     return result
 
 
-def load_data(name, val_size=None, filter_genes=None, train_batches=None, val_batches=None):
+def load_mp_data(
+    name, val_size=None, filter_genes_params=None, train_batches=None, val_batches=None
+):
     """Opens dataset by name.
 
     Current datasets:
@@ -116,42 +162,32 @@ def load_data(name, val_size=None, filter_genes=None, train_batches=None, val_ba
             'mp/official/atac_to_gex'
             'mp/official/gex_to_atac'
     """
-    files = library[name]
+    files = mp_library[name]
     result = dict()
     for name, path in files.items():
         result[name] = ad.read_h5ad(path)
     result = inject_size_factors(result)
 
     if train_batches is not None:
-        batches = result['train_mod1'].obs['batch'].astype('string')
-        train_idx = batches.apply(lambda batch: batch in train_batches).values
-        result['train_mod1'] = result['train_mod1'][train_idx]
-        result['train_mod2'] = result['train_mod2'][train_idx]
+        result["train_mod1"] = select_batches(result["train_mod1"], train_batches)
+        result["train_mod2"] = select_batches(result["train_mod2"], train_batches)
 
-    if filter_genes:
-        fraction, path_to_genes = filter_genes
-        weights = np.loadtxt(path_to_genes, delimiter=',')
-        sorted_weights = np.sort(weights)
-        total_len = sorted_weights.shape[0]
-        best = int(total_len * fraction)
-        bound = sorted_weights[-best]
-        print(bound)
-
-        result['train_mod1'].var['weight'] = weights
-        result['train_mod1'] = result['train_mod1'][:, result['train_mod1'].var['weight'] > bound]
-        result['test_mod1'].var['weight'] = weights
-        result['test_mod1'] = result['test_mod1'][:, result['test_mod1'].var['weight'] > bound]
-
+    if name == "mp/official/gex_to_adt":
+        result["train_mod1"] = filter_genes(result["train_mod1"], filter_genes_params)
+        result["test_mod1"] = filter_genes(result["test_mod1"], filter_genes_params)
+    elif name == "mp/official/adt_to_gex":
+        result["train_mod2"] = filter_genes(result["train_mod2"], filter_genes_params)
+        result["test_mod2"] = filter_genes(result["test_mod2"], filter_genes_params)
 
     if val_size:
-        idx = np.arange(result['train_mod1'].shape[0])
+        idx = np.arange(result["train_mod1"].shape[0])
         np.random.shuffle(idx)
         val_idx = idx[:val_size]
         train_idx = idx[val_size:]
-        result['val_mod1'] = result['train_mod1'][val_idx]
-        result['val_mod2'] = result['train_mod2'][val_idx]
-        result['train_mod1'] = result['train_mod1'][train_idx]
-        result['train_mod2'] = result['train_mod2'][train_idx]
+        result["val_mod1"] = result["train_mod1"][val_idx]
+        result["val_mod2"] = result["train_mod2"][val_idx]
+        result["train_mod1"] = result["train_mod1"][train_idx]
+        result["train_mod2"] = result["train_mod2"][train_idx]
     return result
 
 
@@ -162,29 +198,34 @@ def inject_size_factors(data: dict):
     Args:
         data (dict): load_data's output
     """
+
     def inject(train, test, mod, task_type):
-        if mod == 'gex':
-            if task_type == 'gex_to_adt':
+        if mod == "gex":
+            if task_type == "gex_to_adt":
                 common = ad.read_h5ad(COMMON_GEX_ADT)
             else:
                 common = ad.read_h5ad(COMMON_GEX_ATAC)
         else:
             return train, test
-        
-        common_train = common[common.obs['is_train'], :]
-        train.obs['size_factors'] = common_train.obs['size_factors']
-        common_test = common[~common.obs['is_train'], :]
-        test.obs['size_factors'] = common_test.obs['size_factors']
+
+        common_train = common[common.obs["is_train"], :]
+        train.obs["size_factors"] = common_train.obs["size_factors"]
+        common_test = common[~common.obs["is_train"], :]
+        test.obs["size_factors"] = common_test.obs["size_factors"]
         return train, test
 
-    first_mod = utils.get_mod(data['train_mod1'])
-    second_mod = utils.get_mod(data['train_mod2'])
+    first_mod = utils.get_mod(data["train_mod1"])
+    second_mod = utils.get_mod(data["train_mod2"])
     task_type = utils.get_task_type(first_mod, second_mod)
-    data['train_mod1'], data['test_mod1'] = inject(data['train_mod1'], data['test_mod1'], first_mod, task_type)
-    data['train_mod2'], data['test_mod2'] = inject(data['train_mod2'], data['test_mod2'], second_mod, task_type)
+    data["train_mod1"], data["test_mod1"] = inject(
+        data["train_mod1"], data["test_mod1"], first_mod, task_type
+    )
+    data["train_mod2"], data["test_mod2"] = inject(
+        data["train_mod2"], data["test_mod2"], second_mod, task_type
+    )
     return data
 
 
-if __name__=='__main__':
-    data = load_data('mp/official/gex_to_adt')
-    print(data['train_mod1'].obs['size_factors'].shape)
+if __name__ == "__main__":
+    data = load_mp_data("mp/official/gex_to_adt")
+    print(data["train_mod1"].obs["size_factors"].shape)

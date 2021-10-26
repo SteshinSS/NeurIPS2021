@@ -6,23 +6,23 @@ import pytorch_lightning as pl
 import torch
 import yaml  # type: ignore
 from lab_scripts.data import dataloader
-from lab_scripts.mains.mp import preprocessing, tune, common
-from lab_scripts.mains.mp.preprocessing import base_checkpoint_path, base_config_path
-from lab_scripts.models import mp
+from lab_scripts.mains.mm import preprocessing, tune, common
+from lab_scripts.mains.mm.preprocessing import base_checkpoint_path, base_config_path
+from lab_scripts.models import clip
 from lab_scripts.utils import utils
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 from scipy.sparse import csr_matrix
 import numpy as np
 
-log = logging.getLogger("mp")
+log = logging.getLogger("mm")
 
 
 def get_logger(config):
     pl_logger = None
     if config["wandb"]:
         pl_logger = WandbLogger(
-            project="mp",
+            project="mm",
             log_model=False,  # type: ignore
             config=config,
             tags=["baseline"],
@@ -33,40 +33,26 @@ def get_logger(config):
     return pl_logger
 
 
-def get_callbacks(preprocessed_data: dict, dataset: dict, model_config: dict, logger=None):
-    small_idx = preprocessed_data["small_idx"]
-    train_callback = mp.TargetCallback(
+def get_callbacks(preprocessed_data: dict, model_config: dict, logger=None):
+    callbacks = []
+    small_train_callback = clip.TargetCallback(
         preprocessed_data["small_train_dataloader"],
-        preprocessed_data["second_train_inverse"],
-        dataset["train_mod2"][small_idx],
-        prefix="train",
+        model_config["predict_temperature"],
+        "train",
     )
-    callbacks = [train_callback]
+    callbacks.append(small_train_callback)
 
-    if 'val_dataloader' in preprocessed_data:
-        val_callback = mp.TargetCallback(
-            preprocessed_data["val_dataloader"],
-            preprocessed_data["second_val_inverse"],
-            dataset["val_mod2"],
-            prefix="val",
+    if "val_dataloader" in preprocessed_data:
+        val_callback = clip.TargetCallback(
+            preprocessed_data["val_dataloader"], model_config["predict_temperature"], "val", log_top=[0.05, 0.01]
         )
         callbacks.append(val_callback)
 
-    test_callback = mp.TargetCallback(
-        preprocessed_data["test_dataloader"],
-        preprocessed_data["second_test_inverse"],
-        dataset["test_mod2"],
-        prefix="test",
+    log_preds = logger is not None
+    test_callback = clip.TargetCallback(
+        preprocessed_data["test_dataloader"], model_config["predict_temperature"], "test", log_top=[0.1, 0.05, 0.01], log_preds=log_preds
     )
     callbacks.append(test_callback)
-
-    if model_config['do_tsne']:
-        tsne_callback = mp.BatchEffectCallback(
-            train_dataset=preprocessed_data['train_unshuffled_dataloader'],
-            test_dataset=preprocessed_data['test_dataloader'],
-            frequency=model_config['tsne_frequency'],
-        )
-        callbacks.append(tsne_callback)
 
     if logger is not None:
         learning_rate_monitor = LearningRateMonitor(
@@ -209,12 +195,12 @@ def train(config: dict):
     torch.cuda.set_device(0)
     # Load data
     data_config = config["data"]
-    dataset = dataloader.load_custom_mp_data(
-        task_type=data_config['task_type'],
-        train_batches=data_config['train_batches'],
-        test_batches=data_config['test_batches'],
+    dataset = dataloader.load_custom_mm_data(
+        data_config['task_type'],
+        data_config['train_batches'],
+        data_config['test_batches'],
         filter_genes_params=(data_config["gene_fraction"], "data/genes.csv"),
-        val_size=data_config['val_size']
+        val_size=data_config["val_size"],
     )
     log.info("Data is loaded")
 
@@ -223,17 +209,16 @@ def train(config: dict):
     preprocessed_data = preprocessing.preprocess_data(
         data_config, dataset, model_config["batch_size"], is_train=True
     )
-    train_dataloaders = [preprocessed_data["train_shuffled_dataloader"]]
-    train_dataloaders.extend(preprocessed_data['correction_dataloaders'])
+    train_dataloaders = preprocessed_data["train_shuffled_dataloader"]
     model_config = common.update_model_config(model_config, preprocessed_data)
     log.info("Data is preprocessed")
 
     # Configure training
     pl_logger = get_logger(config)
-    callbacks = get_callbacks(preprocessed_data, dataset, model_config, pl_logger)
+    callbacks = get_callbacks(preprocessed_data, model_config, pl_logger)
 
     # Train model
-    model = mp.Predictor(model_config)
+    model = clip.Clip(model_config)
     if pl_logger:
         pl_logger.watch(model)
 
@@ -244,7 +229,7 @@ def train(config: dict):
         callbacks=callbacks,
         deterministic=True,
         checkpoint_callback=False,
-        gradient_clip_val=model_config["gradient_clip"] if not model_config['use_critic'] else 0.0,
+        gradient_clip_val=model_config["gradient_clip"],
     )
     trainer.fit(model, train_dataloaders=train_dataloaders)
 
@@ -254,12 +239,6 @@ def train(config: dict):
     )
     trainer.save_checkpoint(checkpoint_path)
     log.info(f"Model is saved to {checkpoint_path}")
-
-    if model.use_vi_dropout:
-        weights_path = base_checkpoint_path + "genes.csv"
-        weights = model.vi_dropout.weight.detach().cpu().numpy()
-        np.savetxt(weights_path, weights, delimiter=",")
-        log.info(f"Genes weights are saved to {weights_path}")
 
 
 def get_parser():
