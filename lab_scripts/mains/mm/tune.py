@@ -10,23 +10,25 @@ from lab_scripts.models import clip
 from pytorch_lightning.callbacks import LearningRateMonitor, EarlyStopping
 from pytorch_lightning.loggers import WandbLogger
 from ray import tune
+from lab_scripts.utils import utils
+from ray.tune.integration.pytorch_lightning import TuneReportCallback
+
 
 log = logging.getLogger("mm")
+import ray
 
 
 def get_logger(config):
-    pl_logger = None
-    if config["wandb"]:
-        pl_logger = WandbLogger(
-            project="mm",
-            log_model=False,  # type: ignore
-            config=config,
-            tags=["baseline", "tune"],
-            config_exclude_keys=["wandb"],
-        )
-        pl_logger.experiment.define_metric(name="test_top0.05", summary="max")
-        pl_logger.experiment.define_metric(name="test_top0.01", summary="max")
-        pl_logger.experiment.define_metric(name="test_top0.1", summary="max")
+    pl_logger = WandbLogger(
+        project="mm",
+        log_model=False,  # type: ignore
+        config=config,
+        tags=["baseline", "tune"],
+        config_exclude_keys=["wandb"],
+    )
+    pl_logger.experiment.define_metric(name="test_top0.05", summary="max")
+    pl_logger.experiment.define_metric(name="test_top0.01", summary="max")
+    pl_logger.experiment.define_metric(name="test_top0.1", summary="max")
     return pl_logger
 
 
@@ -64,11 +66,17 @@ def get_callbacks(preprocessed_data: dict, model_config: dict, logger=None):
         )
         callbacks.append(learning_rate_monitor)
     
-    callbacks.append(EarlyStopping(monitor='test_top0.01', patience=30, mode='max'))
+    callbacks.append(TuneReportCallback(["test_top0.01"], on="epoch_end"))
+    
+    callbacks.append(EarlyStopping(monitor='test_top0.01', patience=40, mode='max'))
     return callbacks
 
 
-def tune_one_config(config: dict, preprocessed_data):
+def tune_one_config(config, good_config: dict, preprocessed_data):
+    utils.change_directory_to_repo()
+    good_config.update(config)
+    config = good_config
+
     # Solution of strange bug.
     # See https://github.com/pytorch/pytorch/issues/57794#issuecomment-834976384
     torch.cuda.set_device(0)
@@ -76,7 +84,6 @@ def tune_one_config(config: dict, preprocessed_data):
     data_config = config["data"]
     model_config = config["model"]
 
-    model_config[''] = None
 
     train_dataloaders = preprocessed_data["train_shuffled_dataloader"]
     model_config = common.update_model_config(model_config, preprocessed_data)
@@ -116,19 +123,21 @@ def tune_hp(config: dict):
     preprocessed_data = preprocessing.preprocess_data(
         data_config, dataset, model_config["batch_size"], is_train=True
     )
-    log.info("Data is preprocessed")
 
-    config["model"].update(model_search_space)
-    preprocessed_data["dataset"] = dataset
+    log.info("Data is preprocessed")
     tune.run(
-        tune.with_parameters(tune_one_config, preprocessed_data=preprocessed_data),
-        metric="test",
-        mode="test_top0.01",
-        config=config,
+        tune.with_parameters(tune_one_config, good_config=config, preprocessed_data=preprocessed_data),
+        metric="test_top0.01",
+        mode="max",
+        config=model_search_space,
         resources_per_trial={"gpu": 1, "cpu": 16},
         num_samples=-1,
-        local_dir="tune",
     )
 
 
-model_search_space = {}  # type: ignore
+model_search_space = {
+    'latent_dim': tune.choice([20, 30, 50, 75]),
+    'train_temperature': tune.choice([0.0, 3.0, 5.0, 6.0]),
+    'activation': tune.choice(['leaky_relu', 'relu', 'selu']),
+    'train_per_batch': tune.choice([True, False])
+}  # type: ignore
