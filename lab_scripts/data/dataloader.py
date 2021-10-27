@@ -9,6 +9,16 @@ from lab_scripts.utils import utils
 import anndata as ad
 import numpy as np
 
+
+
+def load_custom_je_data(task_type, train_batches, test_batches, val_size=None):
+    if task_type == "cite":
+        result = load_custom_mp_data("gex_to_adt", train_batches, test_batches, val_size)
+    elif task_type == "atac":
+        result = load_custom_mp_data("adt_to_gex", train_batches, test_batches, val_size)
+    return result
+
+
 mm_library = {
     "mm/official/adt_to_gex": {
         "train_mod1": "data/official/match_modality/openproblems_bmmc_cite_phase1_mod2/openproblems_bmmc_cite_phase1_mod2.censor_dataset.output_train_mod1.h5ad",
