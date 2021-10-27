@@ -116,7 +116,6 @@ def tune_hp(config: dict):
         data_config["task_type"],
         data_config["train_batches"],
         data_config["test_batches"],
-        filter_genes_params=(data_config["gene_fraction"], "data/genes.csv"),
         val_size=data_config["val_size"],
     )
     model_config = config["model"]

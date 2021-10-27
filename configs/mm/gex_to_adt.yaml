@@ -1,22 +1,23 @@
 data: 
-  dataset_name: mm/official/adt_to_gex
-  task_type: adt_to_gex
+  dataset_name: mm/official/gex_to_adt
+  task_type: gex_to_adt
   train_batches: [s1d1, s2d4, s2d1, s3d6]
   test_batches: [s1d2, s3d7]
   batch_correct: []
   val_size: 512
   mod1:
-    name: adt
-    use_normalized: True
-    scale: True
-    type: float
-  mod2:
     name: gex
     use_normalized: True
     scale: True
     type: float
     gene_path: data/genes.csv
     gene_fraction: 0.1
+  mod2:
+    name: adt
+    use_normalized: True
+    scale: True
+    type: float
+
 
 
 
@@ -33,5 +34,5 @@ model:
   gradient_clip: 1.0
   train_per_batch: False
   train_temperature: 3.0
-  predict_temperature: 9.0
+  predict_temperature: 10.6
   l2_lambda: 0.0

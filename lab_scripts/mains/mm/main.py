@@ -6,7 +6,7 @@ import pytorch_lightning as pl
 import torch
 import yaml  # type: ignore
 from lab_scripts.data import dataloader
-from lab_scripts.mains.mm import common, preprocessing, tune
+from lab_scripts.mains.mm import common, preprocessing
 from lab_scripts.mains.mm.preprocessing import (base_checkpoint_path,
                                                 base_config_path)
 from lab_scripts.metrics import mm
@@ -76,20 +76,18 @@ def get_callbacks(preprocessed_data: dict, model_config: dict, logger=None):
 def predict_submission(
     input_train_mod1: ad.AnnData,
     input_train_mod2: ad.AnnData,
+    input_train_sol: ad.AnnData,
     input_test_mod1: ad.AnnData,
+    input_test_mod2: ad.AnnData,
     resources_dir: str = "",
 ) -> ad.AnnData:
-    log.info("Start x_autoencoder prediction...")
-    raise NotImplementedError()
+    log.info("Start MM prediction...")
 
     # Load data
     mod1 = utils.get_mod(input_train_mod1)
     mod2 = utils.get_mod(input_train_mod2)
     log.info("Data is loaded")
 
-    # Here are our resources
-    config_path = resources_dir + base_config_path
-    checkpoint_path = resources_dir + base_checkpoint_path
 
     # Select data type
     task_type = utils.get_task_type(mod1, mod2)
@@ -100,12 +98,8 @@ def predict_submission(
     elif task_type == "atac_to_gex":
         # predictions = predict_atac_to_gex(...)
         pass
-    elif task_type == "gex_to_adt":
-        # predictions = predict_gex_to_adt(...)
-        pass
-    elif task_type == "adt_to_gex":
-        # predictions = predict_adt_to_gex(...)
-        pass
+    elif task_type in ["gex_to_adt", "adt_to_gex"]:
+        predictions = predict_cite(input_train_mod1, input_train_mod2, input_train_sol, input_test_mod1, input_test_mod2, resources_dir, task_type)
     else:
         raise ValueError(f"Inappropriate dataset types: {task_type}")
 
@@ -115,11 +109,54 @@ def predict_submission(
     # Create AnnData object
     result = ad.AnnData(
         X=predictions,
-        obs=input_test_mod1.obs,
-        var=input_train_mod2.var,
         uns={"dataset_id": input_train_mod1.uns["dataset_id"]},
     )
     return result
+
+def predict_cite(input_train_mod1, input_train_mod2, input_train_sol, input_test_mod1, input_test_mod2, resources_dir, task_type):
+    dataset = {
+        'train_mod1': input_train_mod1,
+        'train_mod2': input_train_mod2,
+        'train_sol': input_train_sol,
+        'test_mod1': input_test_mod1,
+        'test_mod2': input_test_mod2,
+    }
+
+    # Here are our resources
+    config_path = resources_dir + base_config_path + task_type + '.yaml'
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+    data_config = config["data"]
+    model_config = config["model"]
+    preprocessed_data = preprocessing.preprocess_data(
+        data_config, dataset, model_config["batch_size"], is_train=False, resources_dir=resources_dir
+    )
+    model_config = common.update_model_config(model_config, preprocessed_data)
+    checkpoint_path = resources_dir + base_checkpoint_path + task_type + '.ckpt'
+    model = clip.Clip.load_from_checkpoint(checkpoint_path, config=model_config)
+
+    first_pred = []
+    second_pred = []
+    all_batches = []
+    with torch.no_grad():
+        for i, batch in enumerate(preprocessed_data['test_dataloader']):  # type: ignore
+            first, second, batch_idx = batch
+            first, second = model(first, second)
+            first_pred.append(first.cpu())
+            second_pred.append(second.cpu())
+            all_batches.append(batch_idx.cpu())
+    first = torch.cat(first_pred, dim=0)  # type: ignore
+    second = torch.cat(second_pred, dim=0)  # type: ignore
+    all_batches = torch.cat(all_batches, dim=0)  # type: ignore
+    embeddings = first @ second.t()  # type: ignore
+    unique_batches = torch.unique(all_batches)
+    for batch in unique_batches:
+        idx = all_batches == batch
+        embeddings[idx][:, ~idx] = -1e9
+    final_predictions = embeddings * np.exp(model_config['predict_temperature'])
+    final_predictions = torch.softmax(final_predictions, dim=1)
+    return final_predictions.detach().cpu().numpy()
+
 
 
 def evaluate(config: dict):
@@ -130,7 +167,6 @@ def evaluate(config: dict):
         data_config["task_type"],
         data_config["train_batches"],
         data_config["test_batches"],
-        filter_genes_params=(data_config["gene_fraction"], "data/genes.csv"),
         val_size=0,
     )
     log.info("Data is loaded")
@@ -223,7 +259,6 @@ def train(config: dict):
         data_config["task_type"],
         data_config["train_batches"],
         data_config["test_batches"],
-        filter_genes_params=(data_config["gene_fraction"], "data/genes.csv"),
         val_size=data_config["val_size"],
     )
     log.info("Data is loaded")
@@ -297,6 +332,7 @@ def cli():
     elif args.action == "evaluate":
         evaluate(config)
     elif args.action == "tune":
+        from lab_scripts.mains.mm import tune
         tune.tune_hp(config)
     else:
         print("Enter command [train, evaluate, tune]")

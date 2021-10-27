@@ -1,15 +1,19 @@
 functionality:
-  name: python_starter_kit
+  name: khrameeva_lab_submission
   namespace: match_modality_starter_kits
   
   # metadata for your method
   version: dev
   description: A description for your method.
   authors:
-    - name: John Doe
-      email: johndoe@youremailprovider.com
+    - name: Simon Steshin
+      email: SteshinSimon@gmail.com
       roles: [ author, maintainer ]
-      props: { github: johndoe, orcid: "0000-1111-2222-3333" }
+      props: { github: SteshinSS, orcid: "0000-1111-2222-3333" }
+    - name: Alina Paronyan
+      email: Alina.Paronyan@skoltech.ru
+      roles: [ author, maintainer ]
+      props: { github: alinaparonyan }
       
   # parameters
   arguments:
@@ -46,24 +50,17 @@ functionality:
       example: "output.h5ad"
       description: "The predicted pairing of test mod1&mod2 profiles."
       required: true
-    # Method-specific parameters. Change these to expose parameters of your method to Nextflow (optional)
-    - name: "--distance_method"
-      type: "string"
-      default: "minkowski"
-      description: The distance metric to use. Possible values include `euclidean` and `minkowski`.
-    - name: "--n_pcs"
-      type: "integer"
-      default: 4
-      description: Number of components to use for dimensionality reduction.
-    - name: "--n_neighbors"
-      type: "integer"
-      default: 5
-      description: Number of neighbors to use.
       
   # files your script needs
   resources:
     - type: python_script
       path: script.py
+    - type: file
+      path: ../../lab_scripts
+    - type: file
+      path: ../../configs
+    - type: file
+      path: ../../checkpoints
   
   # resources for unit testing your component
   tests:
@@ -78,7 +75,8 @@ platforms:
   # executable which uses docker in the back end to run your method.
   - type: docker
     # you need to specify a base image that contains at least bash and python
-    image: dataintuitive/randpy:py3.8
+    image: pytorch/pytorch:1.9.0-cuda11.1-cudnn8-runtime
+    run_args: [ "--gpus all"]
     # You can specify additional dependencies with 'setup'. 
     # See https://viash.io/docs/reference_config/platform-docker/#setup-list
     # for more information on how to add more dependencies.
@@ -94,9 +92,14 @@ platforms:
           - scikit-learn
           - anndata
           - scanpy
+          - pyyaml
+          - torch
+          - pytorch-lightning
+          - plotly
+
 
   # By specifying a 'nextflow', viash will also build a viash module
   # which uses the docker container built above to also be able to 
   # run your method as part of a nextflow pipeline.
   - type: nextflow
-    labels: [ lowmem, lowtime, lowcpu ]
+    labels: [ midmem, hightime, highcpu, gpu  ]

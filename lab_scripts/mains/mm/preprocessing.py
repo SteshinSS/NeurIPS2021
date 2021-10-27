@@ -4,13 +4,14 @@ from collections import Counter
 
 import anndata as ad
 import numpy as np
+from lab_scripts.utils import utils
 import torch
 from lab_scripts.data.integration.processor import (OneOmicDataset, Processor,
                                                     TwoOmicsDataset)
 from torch.utils.data import DataLoader
 
 log = logging.getLogger("mm")
-base_config_path = "configs/mm/mm/"
+base_config_path = "configs/mm/"
 base_checkpoint_path = "checkpoints/mm/mm/"
 
 
@@ -56,6 +57,8 @@ def get_batch_idx(dataset: ad.AnnData):
     Returns:
         torch.Tensor: of batches
     """
+    if 'batch' not in dataset.obs:
+        return None
     dataset_batches = dataset.obs["batch"].astype("string")
     mapping = {item: i for (i, item) in enumerate(dataset_batches.unique())}
     batch_idx = dataset_batches.apply(lambda x: mapping[x])
@@ -128,7 +131,7 @@ def get_correction_dataloaders(
     return result
 
 
-def preprocess_data(config: dict, dataset, batch_size, is_train):
+def preprocess_data(config: dict, dataset, batch_size, is_train, resources_dir=None):
     """Preprocesses data.
 
     Args:
@@ -140,11 +143,20 @@ def preprocess_data(config: dict, dataset, batch_size, is_train):
         dict: returns train/test dataloaders, functions to invert preprocessing
         transformation and number of features in each modalities.
     """
+    if resources_dir is not None:
+        global base_config_path
+        base_config_path = resources_dir + base_config_path
+        global base_checkpoint_path 
+        base_checkpoint_path = resources_dir + base_checkpoint_path
+    for key, value in config.items():
+        if isinstance(value, ad.AnnData):
+            config[key] = utils.convert_to_dense(value)
     result = {}
     train_sorted_idx = dataset["train_sol"].uns["pairing_ix"].astype(np.int32)
     dataset["train_mod2"] = dataset["train_mod2"][train_sorted_idx]
-    test_sorted_idx = dataset["test_sol"].uns["pairing_ix"].astype(np.int32)
-    dataset["test_mod2"] = dataset["test_mod2"][test_sorted_idx]
+    if 'test_sol' in dataset:
+        test_sorted_idx = dataset["test_sol"].uns["pairing_ix"].astype(np.int32)
+        dataset["test_mod2"] = dataset["test_mod2"][test_sorted_idx]
 
     if is_train:
         first_processor = train_processor(

@@ -17,7 +17,10 @@ class Processor:
     def __init__(self, config: dict, mod: str = None):
         if mod is None:
             mod = config['name']
-        self.top_n_genes = config.get("top_n_genes", None)
+        self.gene_fraction = config.get("gene_fraction", None)
+        self.gene_path = config.get("gene_path", None)
+        if self.gene_fraction is not None and self.gene_fraction < 1.0:
+            self._select_genes()
         self.use_normalized = config["use_normalized"]
         self.scale = config["scale"]
         self.mod = mod
@@ -31,9 +34,8 @@ class Processor:
         self.fitted = False
 
     def fit(self, dataset: ad.AnnData):
-        if self.top_n_genes:
-            self._find_highly_variable_genes(dataset)
-            dataset = dataset[:, self.highly_variable_genes]
+        if self.gene_fraction is not None and self.gene_fraction < 1.0:
+            dataset = dataset[:, self.selected_genes]
 
         matrix = self._get_matrix(dataset)
         if self.scale:
@@ -46,14 +48,14 @@ class Processor:
             raise RuntimeError(
                 "Processor is not fitted yet. Run .fit() on a train dataset"
             )
-        if self.top_n_genes:
-            dataset = dataset[:, self.highly_variable_genes]
+        if self.gene_fraction is not None and self.gene_fraction < 1.0:
+            dataset = dataset[:, self.selected_genes]
         matrix = self._get_matrix(dataset)
         if self.scale:
             matrix = self.scaler.transform(matrix)
 
         args = {}  # type: ignore
-        if self.mod == "gex":
+        if self.mod == "gex" and not self.use_normalized:
             size_factors = dataset.obs["size_factors"].to_numpy()
             size_factors = np.expand_dims(size_factors, axis=-1)
             args['size_factors'] = size_factors
@@ -88,17 +90,20 @@ class Processor:
             f.scaler = self.scaler
         f.use_normalized = self.use_normalized
         f.mod = self.mod
-        if self.mod == "gex":
+        if self.mod == "gex" and not self.use_normalized:
             f.size_factors = args["size_factors"]
         return f
 
     def construct_anndata(self, matrix: np.ndarray, dataset):
         raise NotImplementedError()
 
-    def _find_highly_variable_genes(self, dataset: ad.AnnData):
-        self.highly_variable_genes = sc.pp.highly_variable_genes(
-            dataset, n_top_genes=self.top_n_genes, inplace=False
-        )["highly_variable"]
+    def _select_genes(self):
+        weights = np.loadtxt(self.gene_path, delimiter=",")
+        sorted_weights = np.sort(weights)
+        total_len = sorted_weights.shape[0]
+        best = int(total_len * self.gene_fraction)
+        bound = sorted_weights[-best]
+        self.selected_genes = weights > bound
 
     def _get_matrix(self, dataset: ad.AnnData):
         if self.use_normalized:

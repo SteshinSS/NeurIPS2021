@@ -36,8 +36,8 @@ def load_mm_data(name, val_size=None, filter_genes_params=None):
         result[name] = ad.read_h5ad(path)
     return result
 
-def load_custom_mm_data(task_type, train_batches, test_batches, filter_genes_params=None, val_size=None):
-    result = load_custom_mp_data(task_type, train_batches, test_batches, filter_genes_params, val_size)
+def load_custom_mm_data(task_type, train_batches, test_batches, val_size=None):
+    result = load_custom_mp_data(task_type, train_batches, test_batches, val_size)
     train_n = result['train_mod1'].shape[0]
     train_pairing_ix = np.arange(train_n)
     result['train_sol'] = ad.AnnData(np.eye(train_n), uns={'pairing_ix': train_pairing_ix})
@@ -111,16 +111,14 @@ def select_batches(dataset, batches):
 
 
 def load_custom_mp_data(
-    task_type, train_batches, test_batches, filter_genes_params=None, val_size=None
+    task_type, train_batches, test_batches, val_size=None
 ):
     if task_type == "gex_to_adt":
         first = ad.read_h5ad(COMMON_GEX_ADT)
-        first = filter_genes(first, filter_genes_params)
         second = ad.read_h5ad(COMMON_ADT)
     elif task_type == "adt_to_gex":
         first = ad.read_h5ad(COMMON_ADT)
         second = ad.read_h5ad(COMMON_GEX_ADT)
-        second = filter_genes(second, filter_genes_params)
     else:
         raise NotImplementedError()
 
