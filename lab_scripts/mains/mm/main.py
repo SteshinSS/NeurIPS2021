@@ -43,6 +43,7 @@ def get_callbacks(preprocessed_data: dict, model_config: dict, logger=None):
         preprocessed_data["small_train_dataloader"],
         model_config["predict_temperature"],
         "train",
+        log_top=[0.05, 0.01],
     )
     callbacks.append(small_train_callback)
 
@@ -158,7 +159,6 @@ def predict_cite(input_train_mod1, input_train_mod2, input_train_sol, input_test
     return final_predictions.detach().cpu().numpy()
 
 
-
 def evaluate(config: dict):
     torch.cuda.set_device(0)
     # Load data
@@ -184,6 +184,7 @@ def evaluate(config: dict):
         "checkpoint_path", base_checkpoint_path + data_config["task_type"] + ".ckpt"
     )
     model = clip.Clip.load_from_checkpoint(checkpoint_path, config=model_config)
+    model.eval()
 
     def run_for_dataset(dataset, prefix, temps=None):
         first_pred = []
@@ -200,25 +201,26 @@ def evaluate(config: dict):
         second = torch.cat(second_pred, dim=0)  # type: ignore
         all_batches = torch.cat(all_batches, dim=0)  # type: ignore
         embeddings = first @ second.t()  # type: ignore
-        unique_batches = torch.unique(all_batches)
-        for batch in unique_batches:
-            idx = all_batches == batch
-            embeddings[idx][:, ~idx] = -1e9
+
         print(f"{prefix} metric:")
         if temps:
             for temp in temps:
-                print(f"Temp: {temp}", calculate_metric(embeddings, temp))
+                print(f"Temp: {temp}", calculate_metric(embeddings, temp, all_batches))
         else:
             best_temp = find_best_temperature(embeddings[:512].cuda())
-            print(f"Final metric: ", calculate_metric(embeddings, best_temp))
+            print(f"Final metric: ", calculate_metric(embeddings, best_temp, all_batches))
 
     run_for_dataset(preprocessed_data["train_unshuffled_dataloader"], 'Train')
     run_for_dataset(preprocessed_data["test_dataloader"], "Test")
 
 
-def calculate_metric(embeddings, temperature):
+def calculate_metric(embeddings, temperature, all_batches):
     init = torch.eye(embeddings.shape[0])
     final_predictions = embeddings * np.exp(temperature)
+    unique_batches = torch.unique(all_batches)
+    for batch in unique_batches:
+        idx = all_batches == batch
+        embeddings[idx][:, ~idx] = -1e6
     final_predictions = torch.softmax(final_predictions, dim=1)
     return mm.calculate_target(final_predictions.numpy(), init.numpy())
 
@@ -235,7 +237,7 @@ class TempModule(nn.Module):
 
 def find_best_temperature(embeddings):
     module = TempModule(embeddings).cuda()
-    optimizer = torch.optim.SGD(module.parameters(), lr=0.04)
+    optimizer = torch.optim.SGD(module.parameters(), lr=0.1)
     for i in range(100):
         pred = module()
         optimizer.zero_grad()
@@ -246,7 +248,6 @@ def find_best_temperature(embeddings):
     best_temp = module.t.item()
     print(f'Best temp: {best_temp}')
     return best_temp
-    
 
 
 def train(config: dict):

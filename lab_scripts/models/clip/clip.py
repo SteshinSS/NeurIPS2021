@@ -10,7 +10,7 @@ import numpy as np
 import plotly.express as px
 
 
-def construct_net(dims, activation_name: str, latent_dim: int):
+def construct_net(dims, activation_name: str, latent_dim: int, dropout_pos, dropout):
     activation = plugins.get_activation(activation_name)
 
     net = []
@@ -22,6 +22,8 @@ def construct_net(dims, activation_name: str, latent_dim: int):
             )
         )
         net.append((f"{i}_Actiavtion", activation))
+        if i in dropout_pos:
+            net.append((f"{i}_Dropout", nn.Dropout(dropout)))  # type: ignore
     net.append((f"{len(dims) - 1}_Linear", nn.Linear(dims[-1], latent_dim)))
     return nn.Sequential(OrderedDict(net))
 
@@ -30,10 +32,10 @@ class Clip(pl.LightningModule):
     def __init__(self, config: dict):
         super().__init__()
         self.first_net = construct_net(
-            config["first_dim"], config["activation"], config["latent_dim"]
+            config["first_dim"], config["activation"], config["latent_dim"], config['first_dropout'], config['dropout']
         )
         self.second_net = construct_net(
-            config["second_dim"], config["activation"], config["latent_dim"]
+            config["second_dim"], config["activation"], config["latent_dim"], config['second_dropout'], config['dropout']
         )
         self.lr = config["lr"]
         self.attack = config["attack"]

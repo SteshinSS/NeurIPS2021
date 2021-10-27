@@ -38,6 +38,7 @@ def get_callbacks(preprocessed_data: dict, model_config: dict, logger=None):
         preprocessed_data["small_train_dataloader"],
         model_config["predict_temperature"],
         "train",
+        log_top=[0.05, 0.01],
     )
     callbacks.append(small_train_callback)
 
@@ -74,15 +75,14 @@ def get_callbacks(preprocessed_data: dict, model_config: dict, logger=None):
 
 def tune_one_config(config, good_config: dict, preprocessed_data):
     utils.change_directory_to_repo()
-    good_config.update(config)
-    config = good_config
-
     # Solution of strange bug.
     # See https://github.com/pytorch/pytorch/issues/57794#issuecomment-834976384
     torch.cuda.set_device(0)
 
-    data_config = config["data"]
-    model_config = config["model"]
+    data_config = good_config["data"]
+    model_config = good_config["model"]
+    model_config.update(config)
+    config = good_config
 
 
     train_dataloaders = preprocessed_data["train_shuffled_dataloader"]
@@ -138,5 +138,6 @@ model_search_space = {
     'latent_dim': tune.choice([20, 30, 50, 75]),
     'train_temperature': tune.choice([0.0, 3.0, 5.0, 6.0]),
     'activation': tune.choice(['leaky_relu', 'relu', 'selu']),
-    'train_per_batch': tune.choice([True, False])
+    'train_per_batch': tune.choice([True, False]),
+    'dropout': tune.choice([0.0, 0.0, 0.2, 0.4, 0.6])
 }  # type: ignore
