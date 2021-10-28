@@ -15,20 +15,22 @@ from scib.metrics.clustering import opt_louvain
 log = logging.getLogger("je")
 
 
-def create_anndata(train_mod1: ad.AnnData, embeddings: np.ndarray):
-    result_ad = train_mod1.copy()
-    result_ad["X_emb"] = embeddings
-    sc.pp.neighbors(result_ad, use_rep="X_emb")
-    return result_ad
+def create_anndata(solution: ad.AnnData, embeddings: np.ndarray):
+    data = ad.AnnData(
+        X=embeddings,
+        obs=solution.obs,
+        uns=solution.uns
+    )
+    data.obsm["X_emb"] = embeddings
+    sc.pp.neighbors(data, use_rep="X_emb")
+    return data
 
 
 def asw_batch(data: ad.AnnData):
     # https://github.com/theislab/scib/blob/main/scib/metrics/silhouette.py
-    _, result = silhouette_batch(
+    return silhouette_batch(
         data, batch_key="batch", group_key="cell_type", embed="X_emb", verbose=False
     )
-
-    return result["silhouette_score"].mean()
 
 
 def asw_label(data: ad.AnnData):
@@ -48,27 +50,43 @@ def calculate_nmi(data: ad.AnnData):
     return nmi(data, group1="cluster", group2="cell_type")
 
 
-def cc_cons(data: ad.AnnData):
+def cc_cons(data: ad.AnnData, solution: ad.AnnData):
     score = cell_cycle(
-        adata_pre=data,
+        adata_pre=solution,
         adata_post=data,
         batch_key="batch",
         embed="X_emb",
-        recompute_cc=True,
+        recompute_cc=False,
         organism="human",
     )
     return score
 
 
-def ti_cons(data: ad.AnnData):
-    pass
+def ti_cons(data: ad.AnnData, solution: ad.AnnData):
+    score_rna = trajectory_conservation(
+        adata_pre=solution,
+        adata_post=data,
+        label_key='cell_type',
+        pseudotime_key='pseudotime_order_GEX'
+    )
+
+    adt_atac_trajectory = 'pseudotime_order_ATAC' if 'pseudotime_order_ATAC' in solution.obs else 'pseudotime_order_ADT'
+    score_adt_atac = trajectory_conservation(
+        adata_pre=solution,
+        adata_post=data,
+        label_key='cell_type',
+        pseudotime_key=adt_atac_trajectory
+    )
+
+    score_mean = (score_rna + score_adt_atac) / 2
+    return score_mean
 
 
 def graph_conn(data: ad.AnnData):
-    pass
+    return graph_connectivity(data, label_key='cell_type')
 
 
-def calculate_metric(data: ad.AnnData):
+def calculate_metrics(data: ad.AnnData, solution: ad.AnnData):
     result = {}
     log.info('Calculating asw_batch...')
     result['asw_batch'] = asw_batch(data)
@@ -80,5 +98,11 @@ def calculate_metric(data: ad.AnnData):
     result['nmi'] = calculate_nmi(data)
 
     log.info('Calculating cc_cons...')
-    result['cc_cons'] = cc_cons(data)
+    result['cc_cons'] = cc_cons(data, solution)
+
+    log.info('Calculating ti_cons...')
+    result['ti_cons'] = ti_cons(data, solution)
+
+    log.info('Calculating graph_conn...')
+    result['graph_conn'] = graph_conn(data)
     return result
