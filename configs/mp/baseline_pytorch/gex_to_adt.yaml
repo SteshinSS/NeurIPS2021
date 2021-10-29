@@ -1,6 +1,0 @@
-lr: 0.01
-use_dropout: True
-dropout: 0.5
-
-# dataset name
-data: mp/official/gex_to_adt

@@ -1,86 +1,36 @@
-import torch
-import pandas as pd
-from torch import nn
-from torch.nn import functional as F
-import pytorch_lightning as pl
-from lab_scripts.models.common import plugins, losses
-from lab_scripts.metrics.mp import mp_metrics
 from collections import OrderedDict
-from torch.distributions.uniform import Uniform
 from itertools import chain
-from torch.autograd import grad
-from sklearn.manifold import TSNE
-from sklearn.decomposition import PCA
-import numpy as np
-import matplotlib.pyplot as plt
-import wandb
+
+import pandas as pd
 import plotly.express as px
+import pytorch_lightning as pl
+import torch
+from lab_scripts.metrics import mp as mp_metrics
+from lab_scripts.models.common import losses, plugins
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+from torch import nn
+from torch.distributions.uniform import Uniform
+from torch.nn import functional as F
 
-
-class WDGRLCritic(pl.LightningModule):
-    def __init__(self, config: dict):
-        super().__init__()
-        self.feature_dim = config['feature_extractor_dims'][-1]
-        self.total_batches = config['total_batches']
-        dims = config['critic_dims']
-        dims.insert(0, self.feature_dim)
-        self.nets = nn.ModuleList([construct_net(dims, config['activation'], [], 0) for _ in range(self.total_batches)])       
-        self.to_prediction = nn.ModuleList([
-            nn.Linear(dims[-1], 1) for _ in range(self.total_batches)
-        ])
-    
-    def forward(self, x):
-        predictions = []
-        for net, to_pred in zip(self.nets, self.to_prediction):
-            prediction = net(x)
-            predictions.append(torch.squeeze(to_pred(prediction)))
-        return predictions
-
-    def gradient_penalty(self, features, batch_idx):
-        batch_idx = torch.squeeze(batch_idx)
-        unique_batches = torch.unique(batch_idx)
-        gradient_penalty = 0.0
-        for batch in unique_batches:
-            reference_batch = features[batch_idx == batch]
-            other_batch = features[batch_idx != batch]
-            ref_idx = torch.randint(low=0, high=reference_batch.shape[0], size=[other_batch.shape[0]])
-            difference = reference_batch[ref_idx] - other_batch
-            alpha = torch.rand(difference.shape[0], 1).to(self.device)
-            interpolates = other_batch + alpha * difference
-            interpolates = torch.cat([interpolates, reference_batch, other_batch], dim=0).requires_grad_()
-
-            preds = self.nets[batch](interpolates)
-            preds = self.to_prediction[batch](preds)
-            gradients = grad(preds, interpolates,
-                            grad_outputs=torch.ones_like(preds),
-                            retain_graph=True, create_graph=True)[0]
-            gradient_norm = gradients.norm(2, dim=1)
-            gradient_penalty += ((gradient_norm - 1)**2).mean()
-        return gradient_penalty / unique_batches.shape[0]
-    
-    def calculate_loss(self, predictions, batch_idx):
-        batch_idx = torch.squeeze(batch_idx)
-        unique_batches = torch.unique(batch_idx)
-        wasserstain_distance = 0.0
-        for batch in unique_batches:
-            preds = predictions[batch]
-            reference_batch = preds[batch_idx == batch]
-            other_batch = preds[batch_idx != batch]
-            wasserstain_distance += reference_batch.mean() - other_batch.mean()
-        return wasserstain_distance / unique_batches.shape[0]
-    
 
 class GaninCritic(pl.LightningModule):
     def __init__(self, config: dict):
         super().__init__()
-        self.feature_dim = config['feature_extractor_dims'][-1]
-        self.total_batches = config['total_correction_batches']
-        dims = config['critic_dims']
+        self.feature_dim = config["feature_extractor_dims"][-1]
+        self.total_batches = config["total_correction_batches"]
+        dims = config["critic_dims"]
         dims.insert(0, self.feature_dim)
-        self.nets = nn.ModuleList([construct_net(dims, config['activation'], [], 0) for _ in range(self.total_batches)])
-        self.to_prediction = nn.ModuleList([
-            nn.Linear(dims[-1], 1) for _ in range(self.total_batches)
-        ])
+        self.nets = nn.ModuleList(
+            [
+                construct_net(dims, config["activation"], [], 0)
+                for _ in range(self.total_batches)
+            ]
+        )
+        self.to_prediction = nn.ModuleList(
+            [nn.Linear(dims[-1], 1) for _ in range(self.total_batches)]
+        )
+
     def forward(self, x):
         predictions = []
         for net, to_pred in zip(self.nets, self.to_prediction):
@@ -95,15 +45,15 @@ class GaninCritic(pl.LightningModule):
             if inverse:
                 true = ~true
             weights = (~true).sum() / (true).sum()
-            loss += F.binary_cross_entropy_with_logits(prediction, true.to(torch.float32).flatten(), pos_weight=weights)
+            loss += F.binary_cross_entropy_with_logits(
+                prediction, true.to(torch.float32).flatten(), pos_weight=weights
+            )
         return loss
 
 
 def get_critic(name):
-    if name == 'ganin':
+    if name == "ganin":
         return GaninCritic
-    elif name == 'wdgrl':
-        return WDGRLCritic
     else:
         raise NotImplementedError()
 
@@ -154,24 +104,24 @@ class Predictor(pl.LightningModule):
         self.regression_dims = config["regression_dims"]
         self.activation = config["activation"]
         self.lr = config["lr"]
-        self.gradient_clip = config['gradient_clip']
+        self.gradient_clip = config["gradient_clip"]
         self.attack = config["attack"]
         self.sustain = config["sustain"]
         self.release = config["release"]
         self.balance_classes = config["balance_classes"]
         self.register_buffer("batch_weights", torch.tensor(config["batch_weights"]))
-        self.total_correct_batches = config['total_correction_batches']
+        self.total_correct_batches = config["total_correction_batches"]
 
         self.l2_lambda = config["l2_lambda"]
 
         self.use_mmd_loss = config["use_mmd_loss"]
         self.mmd_lambda = config["mmd_lambda"]
 
-        self.use_l2_loss = config['use_l2_loss']
-        self.l2_loss_lambda = config['l2_loss_lambda']
+        self.use_l2_loss = config["use_l2_loss"]
+        self.l2_loss_lambda = config["l2_loss_lambda"]
 
-        self.use_coral_loss = config['use_coral_loss']
-        self.coral_lambda = config['coral_lambda']
+        self.use_coral_loss = config["use_coral_loss"]
+        self.coral_lambda = config["coral_lambda"]
 
         self.use_vi_dropout = config["use_vi_dropout"]
         if self.use_vi_dropout:
@@ -180,27 +130,39 @@ class Predictor(pl.LightningModule):
             self.vi_attack = config["vi_attack"]
 
         self.feature_extractor = construct_net(
-            self.feature_exctractor_dims, self.activation, config['fe_dropout'], config['dropout']
+            self.feature_exctractor_dims,
+            self.activation,
+            config["fe_dropout"],
+            config["dropout"],
         )
         plugins.init(self.feature_extractor, self.activation)
 
-        self.regression = construct_net(self.regression_dims, self.activation, config['regression_dropout'], config['dropout'])
+        self.regression = construct_net(
+            self.regression_dims,
+            self.activation,
+            config["regression_dropout"],
+            config["dropout"],
+        )
         plugins.init(self.regression, self.activation)
 
-        self.main_parameters = chain(self.feature_extractor.parameters(), self.regression.parameters())
+        self.main_parameters = chain(
+            self.feature_extractor.parameters(), self.regression.parameters()
+        )
 
-        self.use_critic = config['use_critic']
-        self.critic_type = config['critic_type']
+        self.use_critic = config["use_critic"]
+        self.critic_type = config["critic_type"]
         if self.use_critic:
             self.automatic_optimization = False
             self.critic = get_critic(self.critic_type)(config)
             self.critic_parameters = self.critic.parameters()
-            self.critic_lambda = config['critic_lambda']
-            self.critic_gamma = config['critic_gamma']
-            self.critic_lr = config['critic_lr']
-            self.normal_iterations = config['normal_iterations']
-            self.critic_iterations = config['critic_iterations']
-            self.do_all_steps = (self.normal_iterations == 0) and (self.critic_iterations == 0)
+            self.critic_lambda = config["critic_lambda"]
+            self.critic_gamma = config["critic_gamma"]
+            self.critic_lr = config["critic_lr"]
+            self.normal_iterations = config["normal_iterations"]
+            self.critic_iterations = config["critic_iterations"]
+            self.do_all_steps = (self.normal_iterations == 0) and (
+                self.critic_iterations == 0
+            )
         self.current_batch = -1
 
     def forward(self, x):
@@ -214,25 +176,26 @@ class Predictor(pl.LightningModule):
             return self.batch_weights[batch_idx]
         else:
             return torch.ones_like(batch_idx, device=self.device)
-    
+
     def training_step(self, batch, batch_n):
         self.current_batch += 1
         if not self.use_critic:
             return self.automatic_step(batch, batch_n)
-        elif self.critic_type == 'ganin':
+        elif self.critic_type == "ganin":
             self.ganin_training_step(batch, batch_n)
         else:
             raise NotImplementedError()
 
-    
     def ganin_training_step(self, batch, batch_n):
         main_batch = batch[0]
         correction_batches = batch[1:]
         if self.do_all_steps:
             is_normal = True
-            is_critic = True 
+            is_critic = True
         else:
-            is_normal = self.current_batch % (self.normal_iterations + self.critic_iterations) > (self.critic_iterations - 1)
+            is_normal = self.current_batch % (
+                self.normal_iterations + self.critic_iterations
+            ) > (self.critic_iterations - 1)
             is_critic = ~is_normal
 
         optimizers = self.optimizers()
@@ -245,7 +208,7 @@ class Predictor(pl.LightningModule):
                 self.critic_parameters, self.gradient_clip, error_if_nonfinite=True
             )
             optimizer.step()
-        
+
         if is_normal:
             optimizer = optimizers[0]
             loss = self.normal_step(main_batch)
@@ -256,8 +219,7 @@ class Predictor(pl.LightningModule):
                 self.main_parameters, self.gradient_clip, error_if_nonfinite=True
             )
             optimizer.step()
-    
-    
+
     def critic_step(self, correction_batches, batch_n):
         cor_first = torch.cat(correction_batches, dim=0)
         features = self.feature_extractor(cor_first)
@@ -268,17 +230,18 @@ class Predictor(pl.LightningModule):
             cor_idx.append(torch.ones((batch.shape[0], 1), device=self.device) * i)
         cor_idx = torch.cat(cor_idx, dim=0)
         critic_loss = self.critic.calculate_loss(critic_preds, cor_idx)
-        self.log('critic', critic_loss, logger=True, prog_bar=True)
+        self.log("critic", critic_loss, logger=True, prog_bar=True)
         return critic_loss
 
     def automatic_step(self, batch, batch_n):
         main_batch = batch[0]
         correction_batches = batch[1:]
         loss = self.normal_step(main_batch)
-        loss += self.correction_step(correction_batches)
+        if self.total_correct_batches > 0:
+            loss += self.correction_step(correction_batches)
         self.log("loss", loss, logger=True)
         return loss
-    
+
     def normal_step(self, main_batch):
         first, second, batch_idx = main_batch
         features = self.forward(first)
@@ -301,10 +264,10 @@ class Predictor(pl.LightningModule):
 
         if self.use_vi_dropout:
             loss += self.calculate_vi_loss()
-        
-        self.log('reg', loss, logger=True, prog_bar=True)
+
+        self.log("reg", loss, logger=True, prog_bar=True)
         return loss
-    
+
     def calculate_vi_loss(self):
         vi_loss = self.vi_dropout.last_vi_loss
         vi_loss *= self.vi_lambda
@@ -317,43 +280,48 @@ class Predictor(pl.LightningModule):
         loss = 0.0
         if self.use_mmd_loss:
             loss += self.calculate_mmd_loss(features, idx)
-        
+
         if self.use_l2_loss:
             loss += self.calulate_l2_loss(features, idx)
-        
+
         if self.use_coral_loss:
             loss += self.calculate_coral_loss(features, idx)
-        
+
         if self.use_critic:
             loss += self.calculate_critic_loss(features, idx)
-        
-        self.log('div', loss, logger=True, prog_bar=True)
+
+        self.log("div", loss, logger=True, prog_bar=True)
         return loss
 
     def calculate_mmd_loss(self, features, batch_idx):
-        mmd_loss = (
-            losses.calculate_mmd_loss(features, batch_idx) * self.mmd_lambda
-        )
+        mmd_loss = losses.calculate_mmd_loss(features, batch_idx) * self.mmd_lambda
         self.log("mmd", mmd_loss, logger=True)
         return mmd_loss
 
     def calulate_l2_loss(self, features, batch_idx):
         l2_loss = losses.calculate_l2_loss(features, batch_idx) * self.l2_loss_lambda
-        self.log('l2', l2_loss, logger=True)
+        self.log("l2", l2_loss, logger=True)
         return l2_loss
 
     def calculate_coral_loss(self, features, batch_idx):
-        coral_loss = losses.calculate_coral_loss(features, batch_idx) * self.coral_lambda
-        self.log('coral', coral_loss, logger=True)
+        coral_loss = (
+            losses.calculate_coral_loss(features, batch_idx) * self.coral_lambda
+        )
+        self.log("coral", coral_loss, logger=True)
         return coral_loss
-    
+
     def calculate_critic_loss(self, features, batch_idx):
         critic_preds = self.critic(features)
-        if self.critic_type == 'ganin':
-            critic_loss = self.critic.calculate_loss(critic_preds, batch_idx, inverse=True) * self.critic_lambda
+        if self.critic_type == "ganin":
+            critic_loss = (
+                self.critic.calculate_loss(critic_preds, batch_idx, inverse=True)
+                * self.critic_lambda
+            )
         else:
-            critic_loss = self.critic.calculate_loss(critic_preds, batch_idx) * self.critic_lambda
-        self.log('critic_adv', critic_loss, logger=True, prog_bar=True)
+            critic_loss = (
+                self.critic.calculate_loss(critic_preds, batch_idx) * self.critic_lambda
+            )
+        self.log("critic_adv", critic_loss, logger=True, prog_bar=True)
         return critic_loss
 
     def predict_step(self, batch, batch_n):
@@ -381,18 +349,20 @@ class Predictor(pl.LightningModule):
 
             return lr_scale
 
-        main_lr_scheduler = torch.optim.lr_scheduler.LambdaLR(main_optimizer, lr_lambda=lr_foo)
-        main_optimizer_dict = {"optimizer": main_optimizer, "lr_scheduler": main_lr_scheduler}
+        main_lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
+            main_optimizer, lr_lambda=lr_foo
+        )
+        main_optimizer_dict = {
+            "optimizer": main_optimizer,
+            "lr_scheduler": main_lr_scheduler,
+        }
         if not self.use_critic:
             return main_optimizer_dict
-        
-        optimizers = [main_optimizer_dict]
-        critic_optimizer = torch.optim.Adam(
-            self.critic_parameters, lr=self.critic_lr
-        )
-        optimizers.append({'optimizer': critic_optimizer})
-        return optimizers
 
+        optimizers = [main_optimizer_dict]
+        critic_optimizer = torch.optim.Adam(self.critic_parameters, lr=self.critic_lr)
+        optimizers.append({"optimizer": critic_optimizer})
+        return optimizers
 
 
 class TargetCallback(pl.Callback):
@@ -421,7 +391,7 @@ class BatchEffectCallback(pl.Callback):
         self.test_dataset = test_dataset
         self.current_epoch = -1
         self.frequency = frequency
-    
+
     def on_train_epoch_end(self, trainer, pl_module):
         self.current_epoch += 1
         if self.current_epoch % self.frequency != 0:
@@ -435,7 +405,9 @@ class BatchEffectCallback(pl.Callback):
                 source_first, source_second, source_idx = batch
                 source_features = pl_module.forward(source_first.to(pl_module.device))
                 predictions = pl_module.regression(source_features)
-                mse = F.mse_loss(predictions.cpu(), source_second.cpu(), reduction='none').mean(dim=1)
+                mse = F.mse_loss(
+                    predictions.cpu(), source_second.cpu(), reduction="none"
+                ).mean(dim=1)
                 all_mse.append(mse)
                 all_features.append(source_features.cpu())
                 all_batch_idx.append(source_idx.cpu())
@@ -443,12 +415,14 @@ class BatchEffectCallback(pl.Callback):
                 target_first, target_second, target_idx = batch
                 target_features = pl_module.forward(target_first.to(pl_module.device))
                 predictions = pl_module.regression(target_features)
-                mse = F.mse_loss(predictions.cpu(), target_second.cpu(), reduction='none').mean(dim=1)
+                mse = F.mse_loss(
+                    predictions.cpu(), target_second.cpu(), reduction="none"
+                ).mean(dim=1)
                 all_mse.append(mse)
                 all_features.append(target_features.cpu())
                 target_idx += 100
                 all_batch_idx.append(target_idx.cpu())
-        
+
         features = torch.cat(all_features, dim=0).numpy()
         batch_idx = torch.cat(all_batch_idx, dim=0).numpy()
         mse = torch.cat(all_mse, dim=0).numpy()
@@ -460,26 +434,25 @@ class BatchEffectCallback(pl.Callback):
 
         test_idx = batch_idx > 90
 
-        df = pd.DataFrame({
-            'mse': mse,
-            'batch': batch_idx,
-            'is_test': batch_idx > 90
-        })
-        df['batch'] = df['batch'].astype('category')
-        fig_1 = px.scatter(embed, x=0, y=1, color=df['batch'])
-
-        fig_2 = px.scatter(embed, x=0, y=1, color=df['mse'], text=df['is_test'])
-
-
-        fig_3 = px.scatter(embed[test_idx], x=0, y=1, color=df['mse'][test_idx], range_color=[0.0, 2.0])
-        fig_4 = px.scatter(embed[~test_idx], x=0, y=1, color=df['mse'][~test_idx], range_color=[0.0, 2.0])
-        trainer.logger.experiment.log({
-            'batch effect': fig_1,
-            'mse': fig_2,
-            'mse_test': fig_3,
-            'mse_train': fig_4,
-        })
-
-
-
-
+        df = pd.DataFrame({"mse": mse, "batch": batch_idx, "is_test": batch_idx > 90})
+        df["batch"] = df["batch"].astype("category")
+        fig_1 = px.scatter(embed, x=0, y=1, color=df["batch"])
+        fig_2 = px.scatter(embed, x=0, y=1, color=df["mse"], text=df["is_test"])
+        fig_3 = px.scatter(
+            embed[test_idx], x=0, y=1, color=df["mse"][test_idx], range_color=[0.0, 2.0]
+        )
+        fig_4 = px.scatter(
+            embed[~test_idx],
+            x=0,
+            y=1,
+            color=df["mse"][~test_idx],
+            range_color=[0.0, 2.0],
+        )
+        trainer.logger.experiment.log(
+            {
+                "batch effect": fig_1,
+                "mse": fig_2,
+                "mse_test": fig_3,
+                "mse_train": fig_4,
+            }
+        )

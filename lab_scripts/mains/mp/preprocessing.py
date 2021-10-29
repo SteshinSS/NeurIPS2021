@@ -168,6 +168,15 @@ def preprocess_data(config: dict, dataset, batch_size, is_train):
         batch_size=batch_size,
         shuffle=False,
     )
+    result['train_batch_weights'] = calculate_batch_weights(first_train['batch_idx'])
+    if not is_train:
+        first_test = preprocess_one_dataset(first_processor, dataset['test_mod1'])
+        test_dataset = OneOmicDataset(first_test['X'])
+        result['test_dataloader'] = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+        test_size_factors = dataset['test_mod1'].obs["size_factors"].to_numpy()
+        test_size_factors = np.expand_dims(test_size_factors, axis=-1)
+        result['second_test_inverse'] = second_processor._get_inverse_transform({'size_factors': test_size_factors})
+        return result
 
     correction_dataloaders = get_correction_dataloaders(config, dataset, first_processor, batch_size)
     result['correction_dataloaders'] = correction_dataloaders
@@ -189,12 +198,11 @@ def preprocess_data(config: dict, dataset, batch_size, is_train):
     test_dataset = TwoOmicsDataset(first_test['X'], second_test['X'], first_test['batch_idx'])
     result['test_dataloader'] = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
-    if config['val_size'] > 0:
+    if 'val_mod1' in dataset > 0:
         first_val = preprocess_one_dataset(first_processor, dataset['val_mod1'])
         second_val = preprocess_one_dataset(second_processor, dataset['val_mod2'])
         result['second_val_inverse'] = second_val['inverse']
         val_dataset = TwoOmicsDataset(first_val['X'], second_val['X'], first_val['batch_idx'])
         result['val_dataloader'] = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
         
-    result['train_batch_weights'] = calculate_batch_weights(first_train['batch_idx'])
     return result

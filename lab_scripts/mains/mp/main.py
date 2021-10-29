@@ -9,6 +9,7 @@ from lab_scripts.data import dataloader
 from lab_scripts.mains.mp import preprocessing, tune, common
 from lab_scripts.mains.mp.preprocessing import base_checkpoint_path, base_config_path
 from lab_scripts.models import mp
+from lab_scripts.metrics import mp as mp_metrics
 from lab_scripts.utils import utils
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
@@ -25,7 +26,7 @@ def get_logger(config):
             project="mp",
             log_model=False,  # type: ignore
             config=config,
-            tags=["baseline"],
+            tags=[config['data']['task_type']],
             config_exclude_keys=["wandb"],
         )
         pl_logger.experiment.define_metric(name="train_m", summary="min")
@@ -82,17 +83,12 @@ def predict_submission(
     input_test_mod1: ad.AnnData,
     resources_dir: str = "",
 ) -> ad.AnnData:
-    log.info("Start x_autoencoder prediction...")
-    raise NotImplementedError()
+    log.info("Start MP prediction...")
 
     # Load data
     mod1 = utils.get_mod(input_train_mod1)
     mod2 = utils.get_mod(input_train_mod2)
     log.info("Data is loaded")
-
-    # Here are our resources
-    config_path = resources_dir + base_config_path
-    checkpoint_path = resources_dir + base_checkpoint_path
 
     # Select data type
     task_type = utils.get_task_type(mod1, mod2)
@@ -103,12 +99,8 @@ def predict_submission(
     elif task_type == "atac_to_gex":
         # predictions = predict_atac_to_gex(...)
         pass
-    elif task_type == "gex_to_adt":
-        # predictions = predict_gex_to_adt(...)
-        pass
-    elif task_type == "adt_to_gex":
-        # predictions = predict_adt_to_gex(...)
-        pass
+    elif task_type in ["gex_to_adt", "adt_to_gex"]:
+        predictions = predict_cite(input_train_mod1, input_train_mod2, input_test_mod1, task_type, resources_dir)
     else:
         raise ValueError(f"Inappropriate dataset types: {task_type}")
 
@@ -125,13 +117,60 @@ def predict_submission(
     return result
 
 
+def predict_cite(
+    input_train_mod1: ad.AnnData,
+    input_train_mod2: ad.AnnData,
+    input_test_mod1: ad.AnnData,
+    task_type: str,
+    resources_dir,
+):
+    config_path = resources_dir + base_config_path + task_type + '.yaml'
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+    
+    model_config = config["model"]
+    data_config = config["data"]
+    dataset = {
+        'train_mod1': input_train_mod1,
+        'train_mod2': input_train_mod2,
+        'test_mod1': input_test_mod1,
+    }
+    preprocessed_data = preprocessing.preprocess_data(
+        data_config, dataset, model_config["batch_size"], is_train=False
+    )
+
+    test_dataloader = preprocessed_data["test_dataloader"]
+    second_test_inverse = preprocessed_data["second_test_inverse"]
+
+    # Add input feature size
+    model_config = common.update_model_config(model_config, preprocessed_data)
+    log.info("Data is preprocessed")
+
+    # Load model
+    checkpoint_path = resources_dir + base_checkpoint_path + data_config['task_type'] + ".ckpt"
+    model = mp.Predictor.load_from_checkpoint(checkpoint_path, config=model_config)
+    log.info(f"Model is loaded from {checkpoint_path}")
+
+    model.eval()
+    second_pred = []
+    with torch.no_grad():
+        for i, batch in enumerate(test_dataloader):
+            prediction = model.predict_step(batch, i)
+            second_pred.append(prediction.cpu())
+    second_pred = torch.cat(second_pred, dim=0)  # type: ignore
+    second_pred = second_test_inverse(second_pred)
+    return second_pred.numpy()  # type: ignore
+
+
+
 def evaluate(config: dict):
     # Load data
     data_config = config["data"]
-    dataset = dataloader.load_data(data_config["dataset_name"])
-    first_mod = utils.get_mod(dataset["train_mod1"])
-    second_mod = utils.get_mod(dataset["train_mod2"])
-    task_type = utils.get_task_type(first_mod, second_mod)
+    dataset = dataloader.load_custom_mp_data(
+        task_type=data_config['task_type'],
+        train_batches=data_config['train_batches'],
+        test_batches=data_config['test_batches']
+    )
     log.info("Data is loaded")
 
     # Preprocess data
@@ -140,12 +179,10 @@ def evaluate(config: dict):
         data_config, dataset, model_config["batch_size"], is_train=False
     )
 
-    train_dataloader = preprocessed_data["train_dataloader"]
-    first_train_inverse = preprocessed_data["first_train_inverse"]
+    train_dataloader = preprocessed_data["train_unshuffled_dataloader"]
     second_train_inverse = preprocessed_data["second_train_inverse"]
 
     test_dataloader = preprocessed_data["test_dataloader"]
-    first_test_inverse = preprocessed_data["first_test_inverse"]
     second_test_inverse = preprocessed_data["second_test_inverse"]
 
     # Add input feature size
@@ -154,66 +191,49 @@ def evaluate(config: dict):
 
     # Load model
     checkpoint_path = config.get(
-        "checkpoint_path", base_checkpoint_path + task_type + ".ckpt"
+        "checkpoint_path", base_checkpoint_path + data_config['task_type'] + ".ckpt"
     )
-    return
-    model = mp.X_autoencoder.load_from_checkpoint(checkpoint_path, config=model_config)
+    model = mp.Predictor.load_from_checkpoint(checkpoint_path, config=model_config)
     log.info(f"Model is loaded from {checkpoint_path}")
 
     model.eval()
-    use_gpu = torch.cuda.is_available()
-    if not use_gpu:
-        log.warning("GPU is not detected.")
-    use_gpu = int(use_gpu)  # type: ignore
-
-    trainer = pl.Trainer(gpus=use_gpu, logger=False)
 
     # Run predictions
     def run_dataset(
-        dataloader, name, first_target, first_inverse, second_target, second_inverse
+        dataloader, name, second_target, second_inverse
     ):
-        predictions = trainer.predict(model, dataloader)
-        first_to_second = []
-        second_to_first = []
-        for (first_to_second_batch, second_to_first_batch) in predictions:  # type: ignore
-            first_to_second.append(first_to_second_batch.cpu())
-            second_to_first.append(second_to_first_batch.cpu())
-        print(
-            f"{name} {first_mod} to {second_mod} metric: {x_autoencoder.calculate_metric(first_to_second, second_inverse, second_target)}"
-        )
-        print(
-            f"{name} {second_mod} to {first_mod} metric: {x_autoencoder.calculate_metric(second_to_first, first_inverse, first_target)}"
-        )
+        second_pred = []
+        with torch.no_grad():
+            for i, batch in enumerate(dataloader):
+                first = batch[0]
+                prediction = model.predict_step(first, i)
+                second_pred.append(prediction.cpu())
+        second_pred = torch.cat(second_pred, dim=0)
+        second_pred = second_inverse(second_pred)
+        metric = mp_metrics.calculate_target(second_pred, second_target)
+        print(name, metric)
 
     run_dataset(
         train_dataloader,
         "Train",
-        dataset["train_mod1"],
-        first_train_inverse,
         dataset["train_mod2"],
         second_train_inverse,
     )
     run_dataset(
         test_dataloader,
         "Test",
-        dataset["test_mod1"],
-        first_test_inverse,
         dataset["test_mod2"],
         second_test_inverse,
     )
 
 
 def train(config: dict):
-    # Solution of strange bug.
-    # See https://github.com/pytorch/pytorch/issues/57794#issuecomment-834976384
-    torch.cuda.set_device(0)
     # Load data
     data_config = config["data"]
     dataset = dataloader.load_custom_mp_data(
         task_type=data_config['task_type'],
         train_batches=data_config['train_batches'],
         test_batches=data_config['test_batches'],
-        filter_genes_params=(data_config["gene_fraction"], "data/genes.csv"),
         val_size=data_config['val_size']
     )
     log.info("Data is loaded")
@@ -267,7 +287,7 @@ def get_parser():
 
     Remove lines with adding config, if you don't need it.
     """
-    parser = argparse.ArgumentParser(description="X autoencoder.")
+    parser = argparse.ArgumentParser(description="Modality Prediction")
     subparsers = parser.add_subparsers(dest="action")
 
     parser_train = subparsers.add_parser("train")

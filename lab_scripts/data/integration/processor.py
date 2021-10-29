@@ -94,9 +94,6 @@ class Processor:
             f.size_factors = args["size_factors"]
         return f
 
-    def construct_anndata(self, matrix: np.ndarray, dataset):
-        raise NotImplementedError()
-
     def _select_genes(self):
         weights = np.loadtxt(self.gene_path, delimiter=",")
         sorted_weights = np.sort(weights)
@@ -168,89 +165,3 @@ class FourOmicsDataset(Dataset):
         self.second = self.second.to(device)
         self.second_target = self.second_target.to(device)
         self.batch_idx = self.batch_idx.to(device)
-
-
-def compare(lhs, rhs):
-    lhs = np.ma.masked_array(lhs, lhs > 0.0)
-    rhs = np.ma.masked_array(rhs, rhs > 0.0)
-    difference = (lhs - rhs).mean()
-    if difference >= 0.01:
-        print(difference)
-        assert False
-
-
-def __test_1():
-    from lab_scripts.data import dataloader
-    data = dataloader.load_data('mp/official/gex_to_adt')['train_mod1']
-    config = {
-        'use_normalized': False,
-        'scale': False,
-    }
-    mod = "gex"
-    processor = Processor(config, mod)
-    
-    result, inverse_function = processor.fit_transform(data)
-    compare(result, data.layers['counts'].toarray())
-    compare(inverse_function(result), data.X.toarray())
-
-def __test_2():
-    from lab_scripts.data import dataloader
-    data = dataloader.load_data('mp/official/gex_to_adt')['train_mod1']
-    config = {
-        'use_normalized': True,
-        'scale': False
-    }
-    mod = "gex"
-    processor = Processor(config, mod)
-    result, inverse_function = processor.fit_transform(data)
-    compare(result, data.X.toarray())
-    compare(inverse_function(result), data.X.toarray())
-
-def __test_3():
-    from lab_scripts.data import dataloader
-    data = dataloader.load_data('mp/official/gex_to_adt')['train_mod1']
-    config = {
-        'use_normalized': True,
-        'scale': True
-    }
-    mod = "gex"
-    processor = Processor(config, mod)
-    result, inverse_function = processor.fit_transform(data)
-    assert np.abs(result.mean()) < 0.01
-    compare(inverse_function(result), data.X.toarray())
-
-def __test_4():
-    from lab_scripts.data import dataloader
-    data = dataloader.load_data('mp/official/gex_to_adt')['train_mod1']
-    config = {
-        'use_normalized': False,
-        'scale': True
-    }
-    mod = "gex"
-    processor = Processor(config, mod)
-    result, inverse_function = processor.fit_transform(data)
-    assert np.abs(result.mean()) < 0.01
-    compare(inverse_function(result), data.X.toarray())
-
-def __test_5():
-    from lab_scripts.data import dataloader
-    data = dataloader.load_data('mp/official/gex_to_adt')['train_mod2']
-    config = {
-        'use_normalized': True,
-        'scale': True
-    }
-    mod = "adt"
-    processor = Processor(config, mod)
-    result, inverse_function = processor.fit_transform(data)
-    assert np.abs(result.mean()) < 0.01
-    compare(inverse_function(result), data.X.toarray()) 
-
-
-if __name__=='__main__':
-    print('Running tests...')
-    __test_1()
-    __test_2()
-    __test_3()
-    __test_4()
-    __test_5()
-    print('Done')
