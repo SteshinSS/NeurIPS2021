@@ -41,7 +41,7 @@ GitPython==3.1.24
 google-auth==2.3.0
 google-auth-oauthlib==0.4.6
 grpcio==1.41.0
-h5py==3.4.0
+h5py==2.10.0
 identify==2.3.0
 idna==3.3
 iniconfig==1.1.1
@@ -89,7 +89,7 @@ nodeenv==1.6.0
 notebook==6.4.4
 numba==0.54.1
 numexpr==2.7.3
-numpy==1.20.3
+numpy==1.18.1
 oauthlib==3.1.1
 opt-einsum==3.3.0
 packaging==21.0
@@ -103,6 +103,7 @@ pexpect==4.8.0
 pickleshare==0.7.5
 Pillow==8.4.0
 platformdirs==2.4.0
+plotly==5.3.1
 pluggy==1.0.0
 pre-commit==2.15.0
 prometheus-client==0.11.0
@@ -117,6 +118,7 @@ pyasn1-modules==0.2.8
 pycodestyle==2.8.0
 pycparser==2.20
 pyDeprecate==0.3.1
+pydot==1.4.2
 pyflakes==2.4.0
 Pygments==2.10.0
 pylint==2.11.1
@@ -145,7 +147,9 @@ requests-unixsocket==0.2.0
 rpy2==3.4.5
 rsa==4.7.2
 scanpy==1.8.1
+scib==1.0.0
 scikit-learn==1.0
+scikit-misc==0.1.4
 scipy==1.7.1
 seaborn==0.11.2
 Send2Trash==1.8.0
@@ -160,6 +164,7 @@ stdlib-list==0.8.0
 subprocess32==3.5.4
 tables==3.6.1
 tabulate==0.8.9
+tenacity==8.0.1
 tensorboard==2.7.0
 tensorboard-data-server==0.6.1
 tensorboard-plugin-wit==1.8.0
@@ -171,12 +176,11 @@ texttable==1.6.4
 threadpoolctl==3.0.0
 toml==0.10.2
 tomli==1.2.1
-torch==1.9.1
-torchaudio==0.9.1
+torch==1.10.0
+torchaudio==0.10.0
 torchmetrics==0.5.1
-torchtext==0.10.1
 torchtyping==0.1.4
-torchvision==0.10.1
+torchvision==0.10.0
 tornado==6.1
 tqdm==4.62.3
 traitlets==5.1.0
