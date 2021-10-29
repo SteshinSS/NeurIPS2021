@@ -2,6 +2,7 @@ data:
   task_type: cite
   train_batches: [s1d1, s2d4, s2d1, s3d6]
   test_batches: [s1d2, s3d7]
+  val_size: 0
   mod1:
     name: gex
     use_normalized: True
@@ -20,7 +21,9 @@ model:
   second_dim: [100, 70, 50]
   common_dim: [100, 100]
   activation: leaky_relu
-  lr: 0.01
-  attack: 0
-  sustain: 100
+  lr: 0.001
+  attack: 10
+  sustain: 3000
   release: 100
+  batch_size: 32
+  gradient_clip: 1.0

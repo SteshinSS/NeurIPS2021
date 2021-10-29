@@ -10,12 +10,16 @@ import anndata as ad
 import numpy as np
 
 
+COMMON_JE_CITE = "data/official/joint_embedding/openproblems_bmmc_cite_phase1/openproblems_bmmc_cite_phase1.censor_dataset.output_solution.h5ad"
+
 
 def load_custom_je_data(task_type, train_batches, test_batches, val_size=None):
     if task_type == "cite":
         result = load_custom_mp_data("gex_to_adt", train_batches, test_batches, val_size)
+        result['solution'] = ad.read_h5ad(COMMON_JE_CITE)
     elif task_type == "atac":
         result = load_custom_mp_data("adt_to_gex", train_batches, test_batches, val_size)
+    
     return result
 
 

@@ -31,14 +31,20 @@ def get_logger(config):
             tags=["baseline"],
             config_exclude_keys=["wandb"],
         )
-        pl_logger.experiment.define_metric(name="test_top0.05", summary="max")
-        pl_logger.experiment.define_metric(name="test_top0.01", summary="max")
-        pl_logger.experiment.define_metric(name="test_top0.1", summary="max")
+        #pl_logger.experiment.define_metric(name="test_top0.05", summary="max")
     return pl_logger
 
 
 def get_callbacks(preprocessed_data: dict, model_config: dict, logger=None):
     callbacks = []
+
+    val_callback = je_model.TargetCallback(
+        preprocessed_data['test_solution'],
+        preprocessed_data['test_dataloader'],
+        frequency=10,
+    )
+    callbacks.append(val_callback)
+
     if logger is not None:
         learning_rate_monitor = LearningRateMonitor(
             logging_interval="step",

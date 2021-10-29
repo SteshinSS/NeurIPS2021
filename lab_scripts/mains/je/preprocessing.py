@@ -201,6 +201,7 @@ def preprocess_data(config: dict, dataset, batch_size, is_train, resources_dir=N
     result["test_dataloader"] = DataLoader(
         test_dataset, batch_size=batch_size, shuffle=False
     )
+    result["test_solution"] = dataset["solution"][dataset['test_mod1'].obs.index]
 
     if 'val_sol' in dataset:
         val_sorted_idx = dataset['val_sol'].uns['pairing_ix'].astype(np.int32)
