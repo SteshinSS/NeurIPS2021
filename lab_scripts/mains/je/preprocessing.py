@@ -104,30 +104,27 @@ def train_processor(mod_config: dict, dataset, task_type: str):
     return processor
 
 
-def get_correction_dataloaders(
-    config: dict, dataset: dict, first_processor: Processor, batch_size: int
-):
-    result = []  # type: ignore
+def get_correction_dataloaders(config: dict, dataset: dict, first_processor: Processor, second_processor: Processor, batch_size: int):
+    result = []  # type: ignore 
 
-    correction_batches = config["batch_correct"]
-    common_dataset = ad.concat([dataset["train_mod1"], dataset["test_mod1"]])
-    dataset_batches = common_dataset.obs["batch"].astype("string")
+    correction_batches = config['batch_correct']
+    common_first_dataset = ad.concat([dataset['train_mod1'], dataset['test_mod1']])
+    common_second_dataset = ad.concat([dataset['train_mod2'], dataset['test_mod2']])
+    dataset_batches = common_first_dataset.obs['batch'].astype('string')
     for cor_batch in correction_batches:
         selected_idx = dataset_batches.apply(lambda batch: batch == cor_batch).values
-        one_batch_dataset = common_dataset[selected_idx]
-        preprocessed_dataset = preprocess_one_dataset(
-            first_processor, one_batch_dataset
-        )
-        preprocessed_dataset = OneOmicDataset(preprocessed_dataset["X"])
-        result.append(
-            DataLoader(
-                preprocessed_dataset,
-                batch_size=batch_size,
-                shuffle=True,
-                pin_memory=True,
-                num_workers=1,
-            )
-        )
+        first_batch = common_first_dataset[selected_idx]
+        first = preprocess_one_dataset(first_processor, first_batch)
+        second_batch = common_second_dataset[selected_idx]
+        second = preprocess_one_dataset(second_processor, second_batch)
+        batch_dataset = TwoOmicsDataset(first['X'], second['X'])
+        result.append(DataLoader(
+            batch_dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            pin_memory=True,
+            num_workers=1,
+        ))
     return result
 
 
@@ -216,4 +213,8 @@ def preprocess_data(config: dict, dataset, batch_size, is_train, resources_dir=N
         )
 
     result["train_batch_weights"] = calculate_batch_weights(first_train["batch_idx"])
+
+    correction_dataloaders = get_correction_dataloaders(config, dataset, first_processor, second_processor, batch_size)
+    result['correction_dataloaders'] = correction_dataloaders
+    result['total_correction_batches'] = len(correction_dataloaders)
     return result

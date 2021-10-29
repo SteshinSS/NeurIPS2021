@@ -2,6 +2,7 @@ data:
   task_type: cite
   train_batches: [s1d1, s2d4, s2d1, s3d6]
   test_batches: [s1d2, s3d7]
+  batch_correct: [s1d1, s2d4, s2d1, s3d6]
   val_size: 0
   mod1:
     name: gex
@@ -17,9 +18,9 @@ data:
     type: float
 
 model:
-  first_dim: [2000, 1000, 500, 250, 100]
+  first_dim: [1000, 1000, 500, 250, 100]
   second_dim: [100, 70, 50]
-  common_dim: [100, 100]
+  common_dim: [150, 150, 125, 100, 100]
   activation: leaky_relu
   lr: 0.001
   attack: 10
@@ -27,3 +28,15 @@ model:
   release: 100
   batch_size: 32
   gradient_clip: 1.0
+
+  use_mmd_loss: True
+  mmd_lambda: 0.1
+
+  use_l2_loss: False
+  l2_loss_lambda: 0.0
+
+  use_coral_loss: False
+  coral_lambda: 0.0
+
+  use_critic: False
+  critic_type: ganin

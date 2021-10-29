@@ -125,7 +125,7 @@ class OneOmicDataset(Dataset):
 
 
 class TwoOmicsDataset(Dataset):
-    def __init__(self, first: torch.Tensor, second: torch.Tensor, batch_idx):
+    def __init__(self, first: torch.Tensor, second: torch.Tensor, batch_idx=None):
         super().__init__()
         self.first = first
         self.second = second
@@ -135,12 +135,16 @@ class TwoOmicsDataset(Dataset):
         return self.first.shape[0]
 
     def __getitem__(self, idx):
-        return self.first[idx], self.second[idx], self.batch_idx[idx]
+        if self.batch_idx is not None:
+            return self.first[idx], self.second[idx], self.batch_idx[idx]
+        else:
+            return self.first[idx], self.second[idx]
     
     def to(self, device):
         self.first = self.first.to(device)
         self.second = self.second.to(device)
-        self.batch_idx = self.batch_idx.to(device)
+        if self.batch_idx is not None:
+            self.batch_idx = self.batch_idx.to(device)
 
 
 class FourOmicsDataset(Dataset):

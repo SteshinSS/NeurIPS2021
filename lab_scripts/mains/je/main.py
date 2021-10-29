@@ -139,7 +139,8 @@ def train(config: dict):
     preprocessed_data = preprocessing.preprocess_data(
         data_config, dataset, model_config["batch_size"], is_train=True
     )
-    train_dataloaders = preprocessed_data["train_shuffled_dataloader"]
+    train_dataloaders = [preprocessed_data["train_shuffled_dataloader"]]
+    train_dataloaders.extend(preprocessed_data['correction_dataloaders'])
     model_config = common.update_model_config(model_config, preprocessed_data)
     log.info("Data is preprocessed")
 
