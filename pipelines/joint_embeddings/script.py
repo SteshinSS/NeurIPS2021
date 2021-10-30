@@ -18,13 +18,12 @@ sys.path.append(meta["resources_dir"])
 # import as usual
 import logging
 import torch
+from lab_scripts.mains.je.main import predict_submission
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger('je')
-log.info('Torch is loaded...')
 
 import anndata as ad
 
-from lab_scripts.mains.je.main import predict_submission
 
 
 input_mod1 = ad.read_h5ad(par['input_mod1'])

@@ -7,6 +7,43 @@ from torch import nn
 from torch.nn import functional as F
 
 
+class GaninCritic(pl.LightningModule):
+    def __init__(self, config: dict):
+        super().__init__()
+        self.feature_dim = config["common_dim"][-1]
+        self.total_batches = config["total_correction_batches"]
+        dims = config["critic_dims"]
+        dims.insert(0, self.feature_dim)
+        self.nets = nn.ModuleList(
+            [
+                construct_net(dims, config["activation"])
+                for _ in range(self.total_batches)
+            ]
+        )
+        self.to_prediction = nn.ModuleList(
+            [nn.Linear(dims[-1], 1) for _ in range(self.total_batches)]
+        )
+
+    def forward(self, x):
+        predictions = []
+        for net, to_pred in zip(self.nets, self.to_prediction):
+            prediction = net(x)
+            predictions.append(torch.squeeze(to_pred(prediction)))
+        return predictions
+
+    def calculate_loss(self, predictions, batch_idx, inverse=False):
+        loss = 0.0
+        for i, prediction in enumerate(predictions):
+            true = batch_idx == i
+            if inverse:
+                true = ~true
+            weights = (~true).sum() / (true).sum()
+            loss += F.binary_cross_entropy_with_logits(
+                prediction, true.to(torch.float32).flatten(), pos_weight=weights
+            )
+        return loss
+
+
 class Encoder(pl.LightningModule):
     def __init__(self, dims, activation_name: str):
         super().__init__()
@@ -51,6 +88,7 @@ class JEAutoencoder(pl.LightningModule):
         self.attack = config["attack"]
         self.sustain = config["sustain"]
         self.release = config["release"]
+        self.gradient_clip = config['gradient_clip']
         self.total_correction_batches = config["total_correction_batches"]
 
         self.first_encoder = Encoder(config["first_dim"], config["activation"])
@@ -63,6 +101,8 @@ class JEAutoencoder(pl.LightningModule):
             config["second_dim"], config["activation"], config["common_dim"][-1]
         )
 
+        self.main_parameters = self.parameters()
+
         self.use_mmd_loss = config["use_mmd_loss"]
         self.mmd_lambda = config["mmd_lambda"]
 
@@ -73,7 +113,18 @@ class JEAutoencoder(pl.LightningModule):
         self.coral_lambda = config["coral_lambda"]
 
         self.use_critic = config["use_critic"]
-        self.critic_type = config["critic_type"]
+        if self.use_critic:
+            self.critic = GaninCritic(config)
+            self.critic_lambda = config["critic_lambda"]
+            self.normal_iterations = config["normal_iterations"]
+            self.critic_iterations = config["critic_iterations"]
+            self.critic_lr = config["critic_lr"]
+            self.critic_parameters = self.critic.parameters()
+            self.do_all_steps = (
+                self.normal_iterations == 0 and self.critic_iterations == 0
+            )
+            self.automatic_optimization = False
+        self.current_batch = -1
 
     def forward(self, first, second):
         first_embed = self.first_encoder(first)
@@ -83,6 +134,13 @@ class JEAutoencoder(pl.LightningModule):
         return embeddings
 
     def training_step(self, batch, batch_n):
+        self.current_batch += 1
+        if not self.use_critic:
+            return self.automatic_step(batch, batch_n)
+        else:
+            self.manual_step(batch, batch_n)
+
+    def automatic_step(self, batch, batch_n):
         loss = 0.0
         train_batch = batch[0]
         loss += self.target_step(train_batch)
@@ -90,6 +148,58 @@ class JEAutoencoder(pl.LightningModule):
         loss += self.div_step(correct_batch)
         self.log("train_loss", loss, logger=True, prog_bar=False)
         return loss
+
+    def manual_step(self, batch, batch_n):
+        main_batch = batch[0]
+        correction_batches = batch[1:]
+        if self.do_all_steps:
+            is_normal = True
+            is_critic = True
+        else:
+            is_normal = self.current_batch % (
+                self.normal_iterations + self.critic_iterations
+            ) > (self.critic_iterations - 1)
+            is_critic = ~is_normal
+
+        optimizers = self.optimizers()
+        if is_critic:
+            optimizer = optimizers[1]
+            loss = self.critic_step(correction_batches, batch_n)
+            optimizer.zero_grad()
+            self.manual_backward(loss)
+            torch.nn.utils.clip_grad_norm_(
+                self.critic_parameters, self.gradient_clip, error_if_nonfinite=True
+            )
+            optimizer.step()
+
+        if is_normal:
+            optimizer = optimizers[0]
+            loss = self.target_step(main_batch)
+            loss += self.div_step(correction_batches)
+            optimizer.zero_grad()
+            self.manual_backward(loss)
+            torch.nn.utils.clip_grad_norm_(
+                self.main_parameters, self.gradient_clip, error_if_nonfinite=True
+            )
+            optimizer.step()
+
+    def critic_step(self, correction_batches, batch_n):
+        first = []
+        second = []
+        cor_idx = []
+        for i, cor_batch in enumerate(correction_batches):
+            first.append(cor_batch[0])
+            second.append(cor_batch[1])
+            cor_idx.append(torch.ones((cor_batch[0].shape[0], 1), device=self.device) * i)
+        first = torch.cat(first, dim=0)
+        second = torch.cat(second, dim=0)
+        features = self(first, second)
+        critic_preds = self.critic(features)
+
+        cor_idx = torch.cat(cor_idx, dim=0)
+        critic_loss = self.critic.calculate_loss(critic_preds, cor_idx)
+        self.log("critic", critic_loss, logger=True, prog_bar=True)
+        return critic_loss
 
     def target_step(self, batch):
         first, second, _ = batch
@@ -158,20 +268,16 @@ class JEAutoencoder(pl.LightningModule):
 
     def calculate_critic_loss(self, features, batch_idx):
         critic_preds = self.critic(features)
-        if self.critic_type == "ganin":
-            critic_loss = (
-                self.critic.calculate_loss(critic_preds, batch_idx, inverse=True)
-                * self.critic_lambda
-            )
-        else:
-            critic_loss = (
-                self.critic.calculate_loss(critic_preds, batch_idx) * self.critic_lambda
-            )
+        critic_loss = (
+            self.critic.calculate_loss(critic_preds, batch_idx, inverse=True)
+            * self.critic_lambda
+        )
+
         self.log("critic_adv", critic_loss, logger=True, prog_bar=True)
         return critic_loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+        main_optimizer = torch.optim.Adam(self.main_parameters, lr=self.lr)
 
         def lr_foo(epoch):
             epoch = epoch + 1
@@ -181,7 +287,20 @@ class JEAutoencoder(pl.LightningModule):
                 lr_scale = 1.0
             else:
                 lr_scale = 1.0 - (epoch - self.sustain - self.attack) / self.release
+
             return lr_scale
 
-        lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_foo)
-        return {"optimizer": optimizer, "lr_scheduler": lr_scheduler}
+        main_lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
+            main_optimizer, lr_lambda=lr_foo
+        )
+        main_optimizer_dict = {
+            "optimizer": main_optimizer,
+            "lr_scheduler": main_lr_scheduler,
+        }
+        if not self.use_critic:
+            return main_optimizer_dict
+
+        optimizers = [main_optimizer_dict]
+        critic_optimizer = torch.optim.Adam(self.critic_parameters, lr=self.critic_lr)
+        optimizers.append({"optimizer": critic_optimizer})
+        return optimizers

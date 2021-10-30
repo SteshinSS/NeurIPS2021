@@ -5,14 +5,14 @@ from collections import Counter
 import anndata as ad
 import numpy as np
 import torch
-from lab_scripts.data.integration.processor import (OneOmicDataset, Processor,
+from lab_scripts.data.integration.processor import (Processor,
                                                     TwoOmicsDataset)
 from lab_scripts.utils import utils
 from torch.utils.data import DataLoader
 
 log = logging.getLogger("je")
-base_config_path = "configs/je/je/"
-base_checkpoint_path = "checkpoints/je/je/"
+base_config_path = "configs/je/"
+base_checkpoint_path = "checkpoints/je/"
 
 
 def get_processor_path(mod_config: dict, task_type: str):
@@ -227,3 +227,11 @@ def preprocess_data(config: dict, dataset, batch_size, is_train, resources_dir=N
     result["correction_dataloaders"] = correction_dataloaders
     result["total_correction_batches"] = len(correction_dataloaders)  # type: ignore
     return result
+
+
+def update_model_config(model_config: dict, preprocessed_data: dict):
+    model_config['first_dim'].insert(0, preprocessed_data['first_features'])
+    model_config['second_dim'].insert(0, preprocessed_data['second_features'])
+    model_config['common_dim'].insert(0, model_config['first_dim'][-1] + model_config['second_dim'][-1])
+    model_config["total_correction_batches"] = preprocessed_data['total_correction_batches']
+    return model_config

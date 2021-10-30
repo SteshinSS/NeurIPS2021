@@ -5,15 +5,14 @@ log = logging.getLogger("je")
 logging.basicConfig(level=logging.INFO)
 
 import anndata as ad
-import torch
-log.info('Importing pl')
 import pytorch_lightning as pl
-log.info('Impoerted.')
+import torch
 import yaml  # type: ignore
 from lab_scripts.data import dataloader
-from lab_scripts.mains.je import common, preprocessing
-from lab_scripts.mains.je.preprocessing import base_checkpoint_path, base_config_path
-from lab_scripts.models.je.model import JEAutoencoder
+from lab_scripts.mains.je import preprocessing
+from lab_scripts.mains.je.model import JEAutoencoder
+from lab_scripts.mains.je.preprocessing import (base_checkpoint_path,
+                                                base_config_path)
 from lab_scripts.utils import utils
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
@@ -70,13 +69,11 @@ def predict_cite(input_mod1, input_mod2, resources_dir):
     preprocessed_data = preprocessing.preprocess_data(
         data_config, dataset, model_config["batch_size"], is_train=False
     )
-    model_config = common.update_model_config(model_config, preprocessed_data)
+    model_config = preprocessing.update_model_config(model_config, preprocessed_data)
     checkpoint_path = (
         resources_dir + base_checkpoint_path + data_config["task_type"] + ".ckpt"
     )
-    model = JEAutoencoder.load_from_checkpoint(
-        checkpoint_path, config=model_config
-    )
+    model = JEAutoencoder.load_from_checkpoint(checkpoint_path, config=model_config)
     model.eval()
     predictions = []  # type: ignore
     with torch.no_grad():
@@ -103,16 +100,14 @@ def evaluate(config: dict):
     preprocessed_data = preprocessing.preprocess_data(
         data_config, dataset, model_config["batch_size"], is_train=False
     )
-    model_config = common.update_model_config(model_config, preprocessed_data)
+    model_config = preprocessing.update_model_config(model_config, preprocessed_data)
     log.info("Data is preprocessed")
 
     # Load model
     checkpoint_path = config.get(
         "checkpoint_path", base_checkpoint_path + data_config["task_type"] + ".ckpt"
     )
-    model = JEAutoencoder.load_from_checkpoint(
-        checkpoint_path, config=model_config
-    )
+    model = JEAutoencoder.load_from_checkpoint(checkpoint_path, config=model_config)
     model.eval()
     predictions = []  # type: ignore
     with torch.no_grad():
@@ -175,9 +170,9 @@ def train(config: dict):
     preprocessed_data = preprocessing.preprocess_data(
         data_config, dataset, model_config["batch_size"], is_train=True
     )
+    model_config = preprocessing.update_model_config(model_config, preprocessed_data)
     train_dataloaders = [preprocessed_data["train_shuffled_dataloader"]]
     train_dataloaders.extend(preprocessed_data["correction_dataloaders"])
-    model_config = common.update_model_config(model_config, preprocessed_data)
     log.info("Data is preprocessed")
 
     # Configure training
@@ -196,7 +191,7 @@ def train(config: dict):
         callbacks=callbacks,
         deterministic=True,
         checkpoint_callback=False,
-        gradient_clip_val=model_config["gradient_clip"],
+        gradient_clip_val=model_config["gradient_clip"] if not model_config['use_critic'] else 0.0,
     )
     trainer.fit(model, train_dataloaders=train_dataloaders)
 
@@ -250,6 +245,7 @@ def cli():
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     utils.set_deafult_seed()
+    from lab_scripts.mains.je.callback import TargetCallback
     from lab_scripts.metrics import je as je_metrics
-    from lab_scripts.models.je.callback import TargetCallback
+
     cli()

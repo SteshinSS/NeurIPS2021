@@ -5,10 +5,8 @@ import torch
 import numpy as np
 from lab_scripts.data import dataloader
 from lab_scripts.mains.je import common, preprocessing
-from lab_scripts.mains.je.preprocessing import (base_checkpoint_path,
-                                                base_config_path)
-from lab_scripts.models.je import model as je_model
-from lab_scripts.models.je.callback import TargetCallback
+from lab_scripts.mains.je import model as je_model
+from lab_scripts.mains.je.callback import TargetCallback
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 

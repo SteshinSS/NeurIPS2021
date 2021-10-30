@@ -1,8 +1,8 @@
 data:
   task_type: cite_pre
-  train_batches: [s1d1, s2d4, s2d1, s3d6]
-  test_batches: [s1d2, s3d7]
-  batch_correct: [s1d1, s2d4, s2d1, s3d6]
+  train_batches: [s1d1, s1d2, s2d4, s2d1]
+  test_batches: [s3d7, s3d6]
+  batch_correct: [s1d1, s1d2, s2d4, s2d1, s3d6, s3d7]
   val_size: 0
   mod1:
     name: gex
@@ -29,14 +29,18 @@ model:
   batch_size: 32
   gradient_clip: 1.0
 
-  use_mmd_loss: True
+  use_mmd_loss: False
   mmd_lambda: 0.1
 
-  use_l2_loss: True
+  use_l2_loss: False
   l2_loss_lambda: 0.0
 
-  use_coral_loss: True
+  use_coral_loss: False
   coral_lambda: 0.0
 
-  use_critic: False
-  critic_type: ganin
+  use_critic: True
+  critic_lambda: 0.01
+  critic_dims: [300, 300, 100]
+  normal_iterations: 1
+  critic_iterations: 1
+  critic_lr: 0.001
