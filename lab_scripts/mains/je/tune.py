@@ -4,7 +4,7 @@ import pytorch_lightning as pl
 import torch
 import numpy as np
 from lab_scripts.data import dataloader
-from lab_scripts.mains.je import common, preprocessing
+from lab_scripts.mains.je import preprocessing
 from lab_scripts.mains.je import model as je_model
 from lab_scripts.mains.je.callback import TargetCallback
 from pytorch_lightning.callbacks import LearningRateMonitor
@@ -49,7 +49,7 @@ def tune_one_config(config, preprocessed_data, dataset):
 
     train_dataloaders = [preprocessed_data["train_shuffled_dataloader"]]
     train_dataloaders.extend(preprocessed_data["correction_dataloaders"])
-    model_config = common.update_model_config(model_config, preprocessed_data)
+    model_config = preprocessing.update_model_config(model_config, preprocessed_data)
     log.info("Data is preprocessed")
 
     # Configure training
@@ -63,12 +63,12 @@ def tune_one_config(config, preprocessed_data, dataset):
 
     trainer = pl.Trainer(
         gpus=1,
-        max_epochs=100,
+        max_epochs=51,
         logger=pl_logger,
         callbacks=callbacks,
         deterministic=True,
         checkpoint_callback=False,
-        gradient_clip_val=model_config["gradient_clip"],
+        gradient_clip_val=model_config["gradient_clip"] if not model_config['use_critic'] else 0.0,
     )
     trainer.fit(model, train_dataloaders=train_dataloaders)
 
@@ -86,29 +86,20 @@ def tune_hp(config: dict):
         data_config, dataset, model_config["batch_size"], is_train=True
     )
     log.info("Data is preprocessed")
-    while True:
-        config['model'] = update_config(model_config)
-        tune_one_config(config, preprocessed_data, dataset)
+    for i in range(10):
+        new_config = config.copy()
+        new_config['model'] = update_config(new_config['model'], i)
+        tune_one_config(new_config, preprocessed_data, dataset)
 
 
 
-def update_config(config: dict):
-    config['lr'] = np.random.choice([
-        0.001, 0.003, 0.005, 0.0005
-    ])
-    config['common_dim'] = np.random.choice([
-        [150, 150, 125, 100, 100],
-        [150, 100],
-        [150, 100, 100]
-    ])
-    config['mmd_lambda'] = np.random.choice([
-        0.0, 0.0, 0.1, 0.3, 0.5, 0.7
-    ])
-    config['l2_loss_lambda'] = np.random.choice([
-        0.0, 0.0, 0.1
-    ])
-    config['coral_lambda'] = np.random.choice([
-        0.0, 0.1, 0.5, 1.0
-    ])
+def update_config(config: dict, i):
+    if i == 0:
+        return config
+    if i == 1:
+        config['use_critic'] = True
+    if i == 2:
+        config['use_critic'] = True
+        config['critic_iterations'] = 3 
     return config
 

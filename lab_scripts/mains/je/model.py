@@ -146,7 +146,6 @@ class JEAutoencoder(pl.LightningModule):
         loss += self.target_step(train_batch)
         correct_batch = batch[1:]
         loss += self.div_step(correct_batch)
-        self.log("train_loss", loss, logger=True, prog_bar=False)
         return loss
 
     def manual_step(self, batch, batch_n):
@@ -206,9 +205,11 @@ class JEAutoencoder(pl.LightningModule):
         embeddings = self(first, second)
         first_reconstruction = self.first_decoder(embeddings)
         second_reconstruction = self.second_decoder(embeddings)
-        return self.get_reconstruction_loss(
+        rec_loss = self.get_reconstruction_loss(
             first, first_reconstruction, second, second_reconstruction
         )
+        self.log("rec", rec_loss, logger=True, prog_bar=False)
+        return rec_loss
 
     def get_reconstruction_loss(
         self, first, first_reconstruction, second, second_reconstruction
@@ -230,7 +231,9 @@ class JEAutoencoder(pl.LightningModule):
         second_all = torch.cat(second_all, dim=0)
         embeddings = self(first_all, second_all)
         idx = torch.cat(idx, dim=0).flatten()
-        return self.get_div_loss(embeddings, idx)
+        div_loss = self.get_div_loss(embeddings, idx)
+        self.log('div', div_loss, logger=True, prog_bar=False)
+        return div_loss
 
     def get_div_loss(self, features, idx):
         loss = 0.0
@@ -246,7 +249,6 @@ class JEAutoencoder(pl.LightningModule):
         if self.use_critic:
             loss += self.calculate_critic_loss(features, idx)
 
-        self.log("div", loss, logger=True, prog_bar=True)
         return loss
 
     def calculate_mmd_loss(self, features, batch_idx):

@@ -40,7 +40,7 @@ model:
 
   use_critic: True
   critic_lambda: 0.01
-  critic_dims: [300, 300, 100]
+  critic_dims: [75, 30]
   normal_iterations: 1
   critic_iterations: 1
   critic_lr: 0.001
