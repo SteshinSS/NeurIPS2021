@@ -3,11 +3,13 @@ import numpy as np
 
 
 def load_custom_je_data(task_type, train_batches, test_batches, val_size=None):
-    if task_type == "cite":
+    if task_type in ["cite_pre", "cite"]:
         result = load_custom_mp_data(
             "gex_to_adt", train_batches, test_batches, val_size
         )
-        result["solution"] = ad.read_h5ad(JE_CITE_SOLUTION)
+        solution = ad.read_h5ad(JE_CITE_SOLUTION)
+        result["train_solution"] = solution[result['train_mod1'].obs.index]
+        result["test_solution"] = solution[result['test_mod1'].obs.index]
     elif task_type == "atac":
         raise NotImplementedError()
     else:

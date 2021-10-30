@@ -4,10 +4,10 @@ from collections import Counter
 
 import anndata as ad
 import numpy as np
-from lab_scripts.utils import utils
 import torch
 from lab_scripts.data.integration.processor import (OneOmicDataset, Processor,
                                                     TwoOmicsDataset)
+from lab_scripts.utils import utils
 from torch.utils.data import DataLoader
 
 log = logging.getLogger("je")
@@ -57,7 +57,7 @@ def get_batch_idx(dataset: ad.AnnData):
     Returns:
         torch.Tensor: of batches
     """
-    if 'batch' not in dataset.obs:
+    if "batch" not in dataset.obs:
         return None
     dataset_batches = dataset.obs["batch"].astype("string")
     mapping = {item: i for (i, item) in enumerate(dataset_batches.unique())}
@@ -104,27 +104,35 @@ def train_processor(mod_config: dict, dataset, task_type: str):
     return processor
 
 
-def get_correction_dataloaders(config: dict, dataset: dict, first_processor: Processor, second_processor: Processor, batch_size: int):
-    result = []  # type: ignore 
+def get_correction_dataloaders(
+    config: dict,
+    dataset: dict,
+    first_processor: Processor,
+    second_processor: Processor,
+    batch_size: int,
+):
+    result = []  # type: ignore
 
-    correction_batches = config['batch_correct']
-    common_first_dataset = ad.concat([dataset['train_mod1'], dataset['test_mod1']])
-    common_second_dataset = ad.concat([dataset['train_mod2'], dataset['test_mod2']])
-    dataset_batches = common_first_dataset.obs['batch'].astype('string')
+    correction_batches = config["batch_correct"]
+    common_first_dataset = ad.concat([dataset["train_mod1"], dataset["test_mod1"]])
+    common_second_dataset = ad.concat([dataset["train_mod2"], dataset["test_mod2"]])
+    dataset_batches = common_first_dataset.obs["batch"].astype("string")
     for cor_batch in correction_batches:
         selected_idx = dataset_batches.apply(lambda batch: batch == cor_batch).values
         first_batch = common_first_dataset[selected_idx]
         first = preprocess_one_dataset(first_processor, first_batch)
         second_batch = common_second_dataset[selected_idx]
         second = preprocess_one_dataset(second_processor, second_batch)
-        batch_dataset = TwoOmicsDataset(first['X'], second['X'])
-        result.append(DataLoader(
-            batch_dataset,
-            batch_size=batch_size,
-            shuffle=True,
-            pin_memory=True,
-            num_workers=1,
-        ))
+        batch_dataset = TwoOmicsDataset(first["X"], second["X"])
+        result.append(
+            DataLoader(
+                batch_dataset,
+                batch_size=batch_size,
+                shuffle=True,
+                pin_memory=True,
+                num_workers=1,
+            )
+        )
     return result
 
 
@@ -143,22 +151,34 @@ def preprocess_data(config: dict, dataset, batch_size, is_train, resources_dir=N
     if resources_dir is not None:
         global base_config_path
         base_config_path = resources_dir + base_config_path
-        global base_checkpoint_path 
+        global base_checkpoint_path
         base_checkpoint_path = resources_dir + base_checkpoint_path
-    for key, value in config.items():
+    for key, value in dataset.items():
         if isinstance(value, ad.AnnData):
-            config[key] = utils.convert_to_dense(value)
+            dataset[key] = utils.convert_to_dense(value)
     result = {}
-    if is_train:
-        first_processor = train_processor(
-            config["mod1"], dataset["train_mod1"], config["task_type"]
-        )
-        second_processor = train_processor(
-            config["mod2"], dataset["train_mod2"], config["task_type"]
-        )
-    else:
+    if not is_train:
         first_processor = load_processor(config["mod1"], config["task_type"])
+        first_test = preprocess_one_dataset(first_processor, dataset["test_mod1"])
+        result["first_features"] = first_test["X"].shape[1]
+
         second_processor = load_processor(config["mod2"], config["task_type"])
+        second_test = preprocess_one_dataset(second_processor, dataset["test_mod2"])
+        result["second_features"] = second_test["X"].shape[1]
+
+        test_dataset = TwoOmicsDataset(first_test["X"], second_test["X"])
+        result["test_dataloader"] = DataLoader(
+            test_dataset, batch_size=batch_size, shuffle=False
+        )
+        result['total_correction_batches'] = len(config['batch_correct'])
+        return result
+
+    first_processor = train_processor(
+        config["mod1"], dataset["train_mod1"], config["task_type"]
+    )
+    second_processor = train_processor(
+        config["mod2"], dataset["train_mod2"], config["task_type"]
+    )
 
     first_train = preprocess_one_dataset(first_processor, dataset["train_mod1"])
     result["first_features"] = first_train["X"].shape[1]
@@ -193,28 +213,17 @@ def preprocess_data(config: dict, dataset, batch_size, is_train, resources_dir=N
     first_test = preprocess_one_dataset(first_processor, dataset["test_mod1"])
     second_test = preprocess_one_dataset(second_processor, dataset["test_mod2"])
     test_dataset = TwoOmicsDataset(
-        first_test["X"], second_test["X"], first_test["batch_idx"]
+        first_test["X"], second_test["X"]
     )
     result["test_dataloader"] = DataLoader(
         test_dataset, batch_size=batch_size, shuffle=False
     )
-    result["test_solution"] = dataset["solution"][dataset['test_mod1'].obs.index]
-
-    if 'val_sol' in dataset:
-        val_sorted_idx = dataset['val_sol'].uns['pairing_ix'].astype(np.int32)
-        dataset['val_mod2'] = dataset['val_mod2'][val_sorted_idx]
-        first_val = preprocess_one_dataset(first_processor, dataset["val_mod1"])
-        second_val = preprocess_one_dataset(second_processor, dataset["val_mod2"])
-        val_dataset = TwoOmicsDataset(
-            first_val["X"], second_val["X"], first_val["batch_idx"]
-        )
-        result["val_dataloader"] = DataLoader(
-            val_dataset, batch_size=batch_size, shuffle=False
-        )
 
     result["train_batch_weights"] = calculate_batch_weights(first_train["batch_idx"])
 
-    correction_dataloaders = get_correction_dataloaders(config, dataset, first_processor, second_processor, batch_size)
-    result['correction_dataloaders'] = correction_dataloaders
-    result['total_correction_batches'] = len(correction_dataloaders)
+    correction_dataloaders = get_correction_dataloaders(
+        config, dataset, first_processor, second_processor, batch_size
+    )
+    result["correction_dataloaders"] = correction_dataloaders
+    result["total_correction_batches"] = len(correction_dataloaders)  # type: ignore
     return result

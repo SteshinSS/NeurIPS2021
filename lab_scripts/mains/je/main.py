@@ -1,73 +1,36 @@
 import argparse
 import logging
 
+log = logging.getLogger("je")
+logging.basicConfig(level=logging.INFO)
+
 import anndata as ad
-import pytorch_lightning as pl
 import torch
+log.info('Importing pl')
+import pytorch_lightning as pl
+log.info('Impoerted.')
 import yaml  # type: ignore
 from lab_scripts.data import dataloader
 from lab_scripts.mains.je import common, preprocessing
-from lab_scripts.mains.je.preprocessing import (base_checkpoint_path,
-                                                base_config_path)
-from lab_scripts.metrics import je as je_metrics
-from lab_scripts.models import je as je_model
+from lab_scripts.mains.je.preprocessing import base_checkpoint_path, base_config_path
+from lab_scripts.models.je.model import JEAutoencoder
 from lab_scripts.utils import utils
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 from scipy.sparse import csr_matrix
-import numpy as np
-from torch import nn
-
-log = logging.getLogger("je")
-
-
-def get_logger(config):
-    pl_logger = None
-    if config["wandb"]:
-        pl_logger = WandbLogger(
-            project="je",
-            log_model=False,  # type: ignore
-            config=config,
-            tags=["baseline"],
-            config_exclude_keys=["wandb"],
-        )
-        #pl_logger.experiment.define_metric(name="test_top0.05", summary="max")
-    return pl_logger
-
-
-def get_callbacks(preprocessed_data: dict, model_config: dict, logger=None):
-    callbacks = []
-
-    val_callback = je_model.TargetCallback(
-        preprocessed_data['test_solution'],
-        preprocessed_data['test_dataloader'],
-        frequency=10,
-    )
-    callbacks.append(val_callback)
-
-    if logger is not None:
-        learning_rate_monitor = LearningRateMonitor(
-            logging_interval="step",
-        )
-        callbacks.append(learning_rate_monitor)
-    return callbacks
 
 
 def predict_submission(
-    input_train_mod1: ad.AnnData,
-    input_train_mod2: ad.AnnData,
-    input_train_sol: ad.AnnData,
-    input_test_mod1: ad.AnnData,
-    input_test_mod2: ad.AnnData,
+    input_mod1: ad.AnnData,
+    input_mod2: ad.AnnData,
     resources_dir: str = "",
 ) -> ad.AnnData:
     log.info("Start MM prediction...")
 
     # Load data
-    mod1 = utils.get_mod(input_train_mod1)
-    mod2 = utils.get_mod(input_train_mod2)
+    mod1 = utils.get_mod(input_mod1)
+    mod2 = utils.get_mod(input_mod2)
     log.info("Data is loaded")
-
 
     # Select data type
     task_type = utils.get_task_type(mod1, mod2)
@@ -79,7 +42,7 @@ def predict_submission(
         # predictions = predict_atac_to_gex(...)
         pass
     elif task_type in ["gex_to_adt", "adt_to_gex"]:
-        pass
+        predictions = predict_cite(input_mod1, input_mod2, resources_dir)
     else:
         raise ValueError(f"Inappropriate dataset types: {task_type}")
 
@@ -89,16 +52,45 @@ def predict_submission(
     # Create AnnData object
     result = ad.AnnData(
         X=predictions,
-        uns={"dataset_id": input_train_mod1.uns["dataset_id"]},
+        uns={"dataset_id": input_mod1.uns["dataset_id"]},
     )
     return result
 
 
+def predict_cite(input_mod1, input_mod2, resources_dir):
+    config_path = resources_dir + base_config_path + "cite_pre" + ".yaml"
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
+    data_config = config["data"]
+    model_config = config["model"]
+    dataset = {
+        "test_mod1": input_mod1,
+        "test_mod2": input_mod2,
+    }
+    preprocessed_data = preprocessing.preprocess_data(
+        data_config, dataset, model_config["batch_size"], is_train=False
+    )
+    model_config = common.update_model_config(model_config, preprocessed_data)
+    checkpoint_path = (
+        resources_dir + base_checkpoint_path + data_config["task_type"] + ".ckpt"
+    )
+    model = JEAutoencoder.load_from_checkpoint(
+        checkpoint_path, config=model_config
+    )
+    model.eval()
+    predictions = []  # type: ignore
+    with torch.no_grad():
+        for i, batch in enumerate(preprocessed_data["test_dataloader"]):
+            first, second = batch
+            predictions.append(model(first, second))
+    predictions = torch.cat(predictions, dim=0)  # type: ignore
+    return predictions.numpy()  # type: ignore
+
+
 def evaluate(config: dict):
-    torch.cuda.set_device(0)
     # Load data
     data_config = config["data"]
-    dataset = dataloader.load_custom_mm_data(
+    dataset = dataloader.load_custom_je_data(
         data_config["task_type"],
         data_config["train_batches"],
         data_config["test_batches"],
@@ -118,12 +110,56 @@ def evaluate(config: dict):
     checkpoint_path = config.get(
         "checkpoint_path", base_checkpoint_path + data_config["task_type"] + ".ckpt"
     )
+    model = JEAutoencoder.load_from_checkpoint(
+        checkpoint_path, config=model_config
+    )
+    model.eval()
+    predictions = []  # type: ignore
+    with torch.no_grad():
+        for i, batch in enumerate(preprocessed_data["test_dataloader"]):
+            first, second = batch
+            predictions.append(model(first, second))
+    predictions = torch.cat(predictions, dim=0)  # type: ignore
+    prediction = je_metrics.create_anndata(dataset["test_solution"], predictions.numpy())  # type: ignore
+    all_metrics = je_metrics.calculate_metrics(prediction, dataset["test_solution"])
+    print(all_metrics)
+
+
+def get_logger(config):
+    pl_logger = None
+    if config["wandb"]:
+        pl_logger = WandbLogger(
+            project="je",
+            log_model=False,  # type: ignore
+            config=config,
+            tags=[config["task_type"]],
+            config_exclude_keys=["wandb"],
+        )
+        # pl_logger.experiment.define_metric(name="test_top0.05", summary="max")
+    return pl_logger
+
+
+def get_callbacks(
+    preprocessed_data: dict, dataset: dict, model_config: dict, logger=None
+):
+    callbacks = []
+
+    val_callback = TargetCallback(
+        dataset["test_solution"],
+        preprocessed_data["test_dataloader"],
+        frequency=10,
+    )
+    callbacks.append(val_callback)
+
+    if logger is not None:
+        learning_rate_monitor = LearningRateMonitor(
+            logging_interval="step",
+        )
+        callbacks.append(learning_rate_monitor)
+    return callbacks
 
 
 def train(config: dict):
-    # Solution of strange bug.
-    # See https://github.com/pytorch/pytorch/issues/57794#issuecomment-834976384
-    torch.cuda.set_device(0)
     # Load data
     data_config = config["data"]
     dataset = dataloader.load_custom_je_data(
@@ -140,16 +176,16 @@ def train(config: dict):
         data_config, dataset, model_config["batch_size"], is_train=True
     )
     train_dataloaders = [preprocessed_data["train_shuffled_dataloader"]]
-    train_dataloaders.extend(preprocessed_data['correction_dataloaders'])
+    train_dataloaders.extend(preprocessed_data["correction_dataloaders"])
     model_config = common.update_model_config(model_config, preprocessed_data)
     log.info("Data is preprocessed")
 
     # Configure training
     pl_logger = get_logger(config)
-    callbacks = get_callbacks(preprocessed_data, model_config, pl_logger)
+    callbacks = get_callbacks(preprocessed_data, dataset, model_config, pl_logger)
 
     # Train model
-    model = je_model.JEAutoencoder(model_config)
+    model = JEAutoencoder(model_config)
     if pl_logger:
         pl_logger.watch(model)
 
@@ -205,6 +241,7 @@ def cli():
         evaluate(config)
     elif args.action == "tune":
         from lab_scripts.mains.je import tune
+
         tune.tune_hp(config)
     else:
         print("Enter command [train, evaluate, tune]")
@@ -213,4 +250,6 @@ def cli():
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     utils.set_deafult_seed()
+    from lab_scripts.metrics import je as je_metrics
+    from lab_scripts.models.je.callback import TargetCallback
     cli()

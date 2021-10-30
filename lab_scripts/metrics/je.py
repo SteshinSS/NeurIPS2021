@@ -3,12 +3,12 @@ import numpy as np
 import scanpy as sc
 import logging
 from scib.metrics import (
-    cell_cycle,
-    graph_connectivity,
-    nmi,
-    silhouette,
-    silhouette_batch,
-    trajectory_conservation,
+   cell_cycle,
+   graph_connectivity,
+   nmi,
+   silhouette,
+   silhouette_batch,
+   trajectory_conservation,
 )
 from scib.metrics.clustering import opt_louvain
 

@@ -2,15 +2,15 @@ import logging
 
 import pytorch_lightning as pl
 import torch
+import numpy as np
 from lab_scripts.data import dataloader
 from lab_scripts.mains.je import common, preprocessing
 from lab_scripts.mains.je.preprocessing import (base_checkpoint_path,
                                                 base_config_path)
-from lab_scripts.models import je as je_model
-from lab_scripts.utils import utils
+from lab_scripts.models.je import model as je_model
+from lab_scripts.models.je.callback import TargetCallback
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
-from ray import tune
 
 log = logging.getLogger("mm")
 
@@ -20,18 +20,18 @@ def get_logger(config):
         project="je",
         log_model=False,  # type: ignore
         config=config,
-        tags=["baseline", "tune"],
+        tags=[config['data']['task_type'], "tune"],
         config_exclude_keys=["wandb"],
     )
     # pl_logger.experiment.define_metric(name="test_top0.05", summary="max")
     return pl_logger
 
 
-def get_callbacks(preprocessed_data: dict, model_config: dict, logger=None):
+def get_callbacks(preprocessed_data: dict, dataset, model_config: dict, logger=None):
     callbacks = []
 
-    val_callback = je_model.TargetCallback(
-        preprocessed_data["test_solution"],
+    val_callback = TargetCallback(
+        dataset["test_solution"],
         preprocessed_data["test_dataloader"],
         frequency=10,
     )
@@ -45,15 +45,7 @@ def get_callbacks(preprocessed_data: dict, model_config: dict, logger=None):
     return callbacks
 
 
-def tune_one_config(config, good_config: dict, preprocessed_data):
-    utils.change_directory_to_repo()
-    good_config.update(config)
-    config = good_config
-
-    # Solution of strange bug.
-    # See https://github.com/pytorch/pytorch/issues/57794#issuecomment-834976384
-    torch.cuda.set_device(0)
-
+def tune_one_config(config, preprocessed_data, dataset):
     data_config = config["data"]
     model_config = config["model"]
 
@@ -64,7 +56,7 @@ def tune_one_config(config, good_config: dict, preprocessed_data):
 
     # Configure training
     pl_logger = get_logger(config)
-    callbacks = get_callbacks(preprocessed_data, model_config, pl_logger)
+    callbacks = get_callbacks(preprocessed_data, dataset, model_config, pl_logger)
 
     # Train model
     model = je_model.JEAutoencoder(model_config)
@@ -81,7 +73,6 @@ def tune_one_config(config, good_config: dict, preprocessed_data):
         gradient_clip_val=model_config["gradient_clip"],
     )
     trainer.fit(model, train_dataloaders=train_dataloaders)
-    tune.report(loss=0.0)
 
 
 def tune_hp(config: dict):
@@ -96,20 +87,30 @@ def tune_hp(config: dict):
     preprocessed_data = preprocessing.preprocess_data(
         data_config, dataset, model_config["batch_size"], is_train=True
     )
-
     log.info("Data is preprocessed")
-    tune.run(
-        tune.with_parameters(
-            tune_one_config, good_config=config, preprocessed_data=preprocessed_data
-        ),
-        metric="loss",
-        mode="min",
-        config=model_search_space,
-        resources_per_trial={"gpu": 1, "cpu": 16},
-        num_samples=-1,
-    )
+    while True:
+        config['model'] = update_config(model_config)
+        tune_one_config(config, preprocessed_data, dataset)
 
 
-model_search_space = {
-    'lr': tune.choice([0.1, 0.01, 0.001]),
-}  # type: ignore
+
+def update_config(config: dict):
+    config['lr'] = np.random.choice([
+        0.001, 0.003, 0.005, 0.0005
+    ])
+    config['common_dim'] = np.random.choice([
+        [150, 150, 125, 100, 100],
+        [150, 100],
+        [150, 100, 100]
+    ])
+    config['mmd_lambda'] = np.random.choice([
+        0.0, 0.0, 0.1, 0.3, 0.5, 0.7
+    ])
+    config['l2_loss_lambda'] = np.random.choice([
+        0.0, 0.0, 0.1
+    ])
+    config['coral_lambda'] = np.random.choice([
+        0.0, 0.1, 0.5, 1.0
+    ])
+    return config
+

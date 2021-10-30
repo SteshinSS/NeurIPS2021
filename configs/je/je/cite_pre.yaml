@@ -1,5 +1,5 @@
 data:
-  task_type: cite
+  task_type: cite_pre
   train_batches: [s1d1, s2d4, s2d1, s3d6]
   test_batches: [s1d2, s3d7]
   batch_correct: [s1d1, s2d4, s2d1, s3d6]
@@ -32,10 +32,10 @@ model:
   use_mmd_loss: True
   mmd_lambda: 0.1
 
-  use_l2_loss: False
+  use_l2_loss: True
   l2_loss_lambda: 0.0
 
-  use_coral_loss: False
+  use_coral_loss: True
   coral_lambda: 0.0
 
   use_critic: False

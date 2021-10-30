@@ -1,68 +1,42 @@
-# Dependencies:
-# pip: anndata, umap-learn
-#
-# Python starter kit for the NeurIPS 2021 Single-Cell Competition.
-# Parts with `TODO` are supposed to be changed by you.
-#
-# More documentation:
-#
-# https://viash.io/docs/creating_components/python/
-
-import logging
-import anndata as ad
-import numpy as np
-
-from sklearn.decomposition import TruncatedSVD
-
-logging.basicConfig(level=logging.INFO)
-
 ## VIASH START
-
-# Anything within this block will be removed by `viash` and will be
-# replaced with the parameters as specified in your config.vsh.yaml.
-
-dataset_path = 'output/datasets/joint_embedding/openproblems_bmmc_cite_phase1/openproblems_bmmc_cite_phase1.censor_dataset.output_'
+dataset_path = '../../data/official/joint_embedding/openproblems_bmmc_cite_phase1/openproblems_bmmc_cite_phase1.censor_dataset.output_'
 # dataset_path = 'output/datasets/joint_embedding/openproblems_bmmc_multiome_phase1/openproblems_bmmc_multiome_phase1.censor_dataset.output_'
 
 par = {
     'input_mod1': dataset_path + 'mod1.h5ad',
     'input_mod2': dataset_path + 'mod2.h5ad',
     'output': 'output.h5ad',
-    'n_dim': 50,
 }
-
+meta = {
+    "resources_dir": "",
+}
 ## VIASH END
 
-# TODO: change this to the name of your method
-method_id = "python_starter_kit"
+import sys
+sys.path.append(meta["resources_dir"])
 
-logging.info('Reading `h5ad` files...')
-ad_mod1 = ad.read_h5ad(par['input_mod1'])
-ad_mod2 = ad.read_h5ad(par['input_mod2'])
+# import as usual
+import logging
+import torch
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger('je')
+log.info('Torch is loaded...')
 
-# TODO: implement your own method
-logging.info('Performing dimensionality reduction on modality 1 values...')
-embedder_mod1 = TruncatedSVD(n_components=int(par["n_dim"]/2))
-mod1_pca = embedder_mod1.fit_transform(ad_mod1.X)
-mod1_obs = ad_mod1.obs
-mod1_uns = ad_mod1.uns
-del ad_mod1
+import anndata as ad
 
-logging.info('Performing dimensionality reduction on modality 2 values...')
-embedder_mod1 = TruncatedSVD(n_components=int(par["n_dim"]/2))
-mod2_pca = embedder_mod1.fit_transform(ad_mod2.X)
-del ad_mod2
+from lab_scripts.mains.je.main import predict_submission
 
-logging.info('Concatenating datasets')
-pca_combined = np.concatenate([mod1_pca, mod2_pca], axis=1)
 
-logging.info('Storing output to file')
-adata = ad.AnnData(
-    X=pca_combined,
-    obs=mod1_obs,
-    uns={
-        'dataset_id': mod1_uns['dataset_id'],
-        'method_id': method_id,
-    },
+input_mod1 = ad.read_h5ad(par['input_mod1'])
+input_mod2 = ad.read_h5ad(par['input_mod2'])
+
+resources_dir = meta["resources_dir"]
+if resources_dir:
+    # It contains path to folder with resources. Let's add slash to concatenate it later.
+    resources_dir += "/"
+adata = predict_submission(
+    input_mod1, input_mod2, resources_dir
 )
-adata.write_h5ad(par['output'], compression="gzip")
+
+adata.uns["method_id"] = "KhrameevaLab"
+adata.write_h5ad(par["output"], compression="gzip")

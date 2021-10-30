@@ -104,7 +104,10 @@ class Processor:
 
     def _get_matrix(self, dataset: ad.AnnData):
         if self.use_normalized:
-            return dataset.X.toarray().astype(self.type)
+            if isinstance(dataset.X, np.ndarray):
+                return dataset.X.astype(self.type)
+            else:
+                return dataset.X.toarray().astype(self.type)
         else:
             return dataset.layers["counts"].toarray().astype(self.type)
 

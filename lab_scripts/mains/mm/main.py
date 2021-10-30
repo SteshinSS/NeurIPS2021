@@ -28,7 +28,7 @@ def get_logger(config):
             project="mm",
             log_model=False,  # type: ignore
             config=config,
-            tags=["baseline"],
+            tags=[config['data']['task_type']],
             config_exclude_keys=["wandb"],
         )
         pl_logger.experiment.define_metric(name="test_top0.05", summary="max")
