@@ -39,7 +39,7 @@ model:
   coral_lambda: 0.0
 
   use_critic: True
-  critic_lambda: 0.01
+  critic_lambda: 0.03
   critic_dims: [75, 30]
   normal_iterations: 1
   critic_iterations: 1

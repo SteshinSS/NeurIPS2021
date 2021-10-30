@@ -97,9 +97,6 @@ def update_config(config: dict, i):
     if i == 0:
         return config
     if i == 1:
-        config['use_critic'] = True
-    if i == 2:
-        config['use_critic'] = True
         config['critic_iterations'] = 3 
     return config
 
