@@ -19,7 +19,7 @@ sys.path.append(meta["resources_dir"])
 # import as usual
 import logging
 import anndata as ad
-from lab_scripts.mains import baseline_linear as main
+from lab_scripts.mains.mp import main
 
 logging.basicConfig(level=logging.INFO)
 print(meta["resources_dir"])

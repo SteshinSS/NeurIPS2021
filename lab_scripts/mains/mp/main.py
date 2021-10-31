@@ -8,7 +8,7 @@ import yaml  # type: ignore
 from lab_scripts.data import dataloader
 from lab_scripts.mains.mp import preprocessing, tune, common
 from lab_scripts.mains.mp.preprocessing import base_checkpoint_path, base_config_path
-from lab_scripts.models import mp
+from lab_scripts.mains.mp import model as mp_model
 from lab_scripts.metrics import mp as mp_metrics
 from lab_scripts.utils import utils
 from pytorch_lightning.callbacks import LearningRateMonitor
@@ -18,63 +18,6 @@ import numpy as np
 
 log = logging.getLogger("mp")
 
-
-def get_logger(config):
-    pl_logger = None
-    if config["wandb"]:
-        pl_logger = WandbLogger(
-            project="mp",
-            log_model=False,  # type: ignore
-            config=config,
-            tags=[config['data']['task_type']],
-            config_exclude_keys=["wandb"],
-        )
-        pl_logger.experiment.define_metric(name="train_m", summary="min")
-        pl_logger.experiment.define_metric(name="test_m", summary="min")
-    return pl_logger
-
-
-def get_callbacks(preprocessed_data: dict, dataset: dict, model_config: dict, logger=None):
-    small_idx = preprocessed_data["small_idx"]
-    train_callback = mp.TargetCallback(
-        preprocessed_data["small_train_dataloader"],
-        preprocessed_data["second_train_inverse"],
-        dataset["train_mod2"][small_idx],
-        prefix="train",
-    )
-    callbacks = [train_callback]
-
-    if 'val_dataloader' in preprocessed_data:
-        val_callback = mp.TargetCallback(
-            preprocessed_data["val_dataloader"],
-            preprocessed_data["second_val_inverse"],
-            dataset["val_mod2"],
-            prefix="val",
-        )
-        callbacks.append(val_callback)
-
-    test_callback = mp.TargetCallback(
-        preprocessed_data["test_dataloader"],
-        preprocessed_data["second_test_inverse"],
-        dataset["test_mod2"],
-        prefix="test",
-    )
-    callbacks.append(test_callback)
-
-    if model_config['do_tsne']:
-        tsne_callback = mp.BatchEffectCallback(
-            train_dataset=preprocessed_data['train_unshuffled_dataloader'],
-            test_dataset=preprocessed_data['test_dataloader'],
-            frequency=model_config['tsne_frequency'],
-        )
-        callbacks.append(tsne_callback)
-
-    if logger is not None:
-        learning_rate_monitor = LearningRateMonitor(
-            logging_interval="step",
-        )
-        callbacks.append(learning_rate_monitor)
-    return callbacks
 
 
 def predict_submission(
@@ -148,7 +91,7 @@ def predict_cite(
 
     # Load model
     checkpoint_path = resources_dir + base_checkpoint_path + data_config['task_type'] + ".ckpt"
-    model = mp.Predictor.load_from_checkpoint(checkpoint_path, config=model_config)
+    model = mp_model.Predictor.load_from_checkpoint(checkpoint_path, config=model_config)
     log.info(f"Model is loaded from {checkpoint_path}")
 
     model.eval()
@@ -193,7 +136,7 @@ def evaluate(config: dict):
     checkpoint_path = config.get(
         "checkpoint_path", base_checkpoint_path + data_config['task_type'] + ".ckpt"
     )
-    model = mp.Predictor.load_from_checkpoint(checkpoint_path, config=model_config)
+    model = mp_model.Predictor.load_from_checkpoint(checkpoint_path, config=model_config)
     log.info(f"Model is loaded from {checkpoint_path}")
 
     model.eval()
@@ -227,6 +170,64 @@ def evaluate(config: dict):
     )
 
 
+def get_logger(config):
+    pl_logger = None
+    if config["wandb"]:
+        pl_logger = WandbLogger(
+            project="mp",
+            log_model=False,  # type: ignore
+            config=config,
+            tags=[config['data']['task_type']],
+            config_exclude_keys=["wandb"],
+        )
+        pl_logger.experiment.define_metric(name="train_m", summary="min")
+        pl_logger.experiment.define_metric(name="test_m", summary="min")
+    return pl_logger
+
+
+def get_callbacks(preprocessed_data: dict, dataset: dict, model_config: dict, logger=None):
+    small_idx = preprocessed_data["small_idx"]
+    train_callback = mp_model.TargetCallback(
+        preprocessed_data["small_train_dataloader"],
+        preprocessed_data["second_train_inverse"],
+        dataset["train_mod2"][small_idx],
+        prefix="train",
+    )
+    callbacks = [train_callback]
+
+    if 'val_dataloader' in preprocessed_data:
+        val_callback = mp_model.TargetCallback(
+            preprocessed_data["val_dataloader"],
+            preprocessed_data["second_val_inverse"],
+            dataset["val_mod2"],
+            prefix="val",
+        )
+        callbacks.append(val_callback)
+
+    test_callback = mp_model.TargetCallback(
+        preprocessed_data["test_dataloader"],
+        preprocessed_data["second_test_inverse"],
+        dataset["test_mod2"],
+        prefix="test",
+    )
+    callbacks.append(test_callback)
+
+    if model_config['do_tsne']:
+        tsne_callback = mp_model.BatchEffectCallback(
+            train_dataset=preprocessed_data['train_unshuffled_dataloader'],
+            test_dataset=preprocessed_data['test_dataloader'],
+            frequency=model_config['tsne_frequency'],
+        )
+        callbacks.append(tsne_callback)
+
+    if logger is not None:
+        learning_rate_monitor = LearningRateMonitor(
+            logging_interval="step",
+        )
+        callbacks.append(learning_rate_monitor)
+    return callbacks
+
+
 def train(config: dict):
     # Load data
     data_config = config["data"]
@@ -253,7 +254,7 @@ def train(config: dict):
     callbacks = get_callbacks(preprocessed_data, dataset, model_config, pl_logger)
 
     # Train model
-    model = mp.Predictor(model_config)
+    model = mp_model.Predictor(model_config)
     if pl_logger:
         pl_logger.watch(model)
 

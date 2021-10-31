@@ -4,11 +4,10 @@ import pytorch_lightning as pl
 import torch
 from lab_scripts.data import dataloader
 from lab_scripts.mains.mp import common, preprocessing
-from lab_scripts.models import mp
+from lab_scripts.mains.mp import model as mp
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.loggers import WandbLogger
-from ray import tune
 
 log = logging.getLogger("mp")
 
@@ -150,14 +149,3 @@ l2_loss = [0.0, 0.0, 0.001, 0.005]
 
 coral = [0.0, 1.0, 5.0, 10.0]
 
-
-model_search_space = {
-    "fe_dims": tune.choice(range(len(fe_dims))),
-    "re_dims": tune.choice(range(len(re_dims))),
-    "fe_drop": tune.choice(range(len(fe_drop))),
-    "l2": tune.choice(range(len(l2))),
-    "mmd": tune.choice(range(len(mmd))),
-    "l2_loss": tune.choice(range(len(l2_loss))),
-    "coral": tune.choice(range(len(coral))),
-    "lr": tune.choice([0.001, 0.0005, 0.003]),
-}

@@ -9,8 +9,8 @@ from lab_scripts.data.integration.processor import (Processor, TwoOmicsDataset, 
 from torch.utils.data import DataLoader
 
 log = logging.getLogger("mp")
-base_config_path = "configs/mp/mp/"
-base_checkpoint_path = "checkpoints/mp/mp/"
+base_config_path = "configs/mp/"
+base_checkpoint_path = "checkpoints/mp/"
 
 
 def get_processor_path(mod_config: dict, task_type: str):
@@ -168,10 +168,11 @@ def preprocess_data(config: dict, dataset, batch_size, is_train):
         batch_size=batch_size,
         shuffle=False,
     )
+    result['total_correction_batches'] = len(config['batch_correct'])
     result['train_batch_weights'] = calculate_batch_weights(first_train['batch_idx'])
     if not is_train:
         first_test = preprocess_one_dataset(first_processor, dataset['test_mod1'])
-        test_dataset = OneOmicDataset(first_test['X'])
+        test_dataset = TwoOmicsDataset(first_test['X'], first_test['X'])
         result['test_dataloader'] = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
         test_size_factors = dataset['test_mod1'].obs["size_factors"].to_numpy()
         test_size_factors = np.expand_dims(test_size_factors, axis=-1)
@@ -180,7 +181,7 @@ def preprocess_data(config: dict, dataset, batch_size, is_train):
 
     correction_dataloaders = get_correction_dataloaders(config, dataset, first_processor, batch_size)
     result['correction_dataloaders'] = correction_dataloaders
-    result['total_correction_batches'] = len(correction_dataloaders)
+    
 
     small_idx = np.arange(first_train['X'].shape[0])
     np.random.shuffle(small_idx)
@@ -198,7 +199,7 @@ def preprocess_data(config: dict, dataset, batch_size, is_train):
     test_dataset = TwoOmicsDataset(first_test['X'], second_test['X'], first_test['batch_idx'])
     result['test_dataloader'] = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
-    if 'val_mod1' in dataset > 0:
+    if 'val_mod1' in dataset:
         first_val = preprocess_one_dataset(first_processor, dataset['val_mod1'])
         second_val = preprocess_one_dataset(second_processor, dataset['val_mod2'])
         result['second_val_inverse'] = second_val['inverse']
