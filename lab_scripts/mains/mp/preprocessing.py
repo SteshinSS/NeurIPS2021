@@ -1,11 +1,12 @@
 import logging
 import pickle
+from collections import Counter
 
 import anndata as ad
 import numpy as np
-from collections import Counter
 import torch
-from lab_scripts.data.integration.processor import (Processor, TwoOmicsDataset, OneOmicDataset)
+from lab_scripts.data.integration.processor import (OneOmicDataset, get_processor,
+                                                    TwoOmicsDataset)
 from torch.utils.data import DataLoader
 
 log = logging.getLogger("mp")
@@ -14,7 +15,7 @@ base_checkpoint_path = "checkpoints/mp/"
 
 
 def get_processor_path(mod_config: dict, task_type: str):
-    mod = mod_config['name']
+    mod = mod_config["name"]
     return mod_config.get(
         "checkpoint_path",
         base_checkpoint_path + task_type + "_" + mod + ".ckpt",
@@ -22,7 +23,7 @@ def get_processor_path(mod_config: dict, task_type: str):
 
 
 def load_processor(config, task_type):
-    mod = config['name']
+    mod = config["name"]
     processor_checkpoint_path = get_processor_path(config, task_type)
     with open(processor_checkpoint_path, "rb") as f:
         processor = pickle.load(f)
@@ -39,7 +40,7 @@ def save_processor(processor, config, task_type):
         task_type (str): One of four
         proc_type (str, optional): Either 'input' or 'target' for non-mirror datasets. Defaults to None.
     """
-    mod = config['name']
+    mod = config["name"]
     processor_checkpoint_path = get_processor_path(config, task_type)
     with open(processor_checkpoint_path, "wb") as f:
         pickle.dump(processor, f)
@@ -55,32 +56,12 @@ def get_batch_idx(dataset: ad.AnnData):
     Returns:
         torch.Tensor: of batches
     """
-    dataset_batches = dataset.obs['batch'].astype('string')
-    mapping = {
-        item: i
-        for (i, item) in enumerate(
-            dataset_batches.unique()
-        )
-    }
-    batch_idx = (
-        dataset_batches.apply(lambda x: mapping[x])
-    )
+    dataset_batches = dataset.obs["batch"].astype("string")
+    mapping = {item: i for (i, item) in enumerate(dataset_batches.unique())}
+    batch_idx = dataset_batches.apply(lambda x: mapping[x])
     batch_idx = batch_idx.to_numpy()
     batch_idx = torch.tensor(batch_idx)
     return batch_idx
-
-
-def preprocess_one_dataset(
-    processor: Processor,
-    dataset: ad.AnnData,
-):
-    X, inverse_transform = processor.transform(dataset)
-    result = {
-        'X': X,
-        'inverse': inverse_transform,
-        'batch_idx': get_batch_idx(dataset),
-    }
-    return result
 
 
 def calculate_batch_weights(batch_idx):
@@ -101,109 +82,146 @@ def calculate_batch_weights(batch_idx):
 
 
 def train_processor(mod_config: dict, dataset, task_type: str):
-    processor = Processor(mod_config)
+    processor = get_processor(mod_config)
     processor.fit(dataset)
     save_processor(processor, mod_config, task_type)
     return processor
 
 
-def get_correction_dataloaders(config: dict, dataset: dict, first_processor: Processor, batch_size: int):
-    result = []  # type: ignore 
-
-    correction_batches = config['batch_correct']
-    common_dataset = ad.concat([dataset['train_mod1'], dataset['test_mod1']])
-    dataset_batches = common_dataset.obs['batch'].astype('string')
-    for cor_batch in correction_batches:
-        selected_idx = dataset_batches.apply(lambda batch: batch == cor_batch).values
-        one_batch_dataset = common_dataset[selected_idx]
-        preprocessed_dataset = preprocess_one_dataset(first_processor, one_batch_dataset)
-        preprocessed_dataset = OneOmicDataset(preprocessed_dataset['X'])
-        result.append(DataLoader(
-            preprocessed_dataset,
-            batch_size=batch_size,
-            shuffle=True,
-            pin_memory=True,
-            num_workers=1,
-        ))
+def preprocess_test_data(config, dataset):
+    result = {}
+    first_processor = load_processor(config["mod1"], config["task_type"])
+    first_X  = first_processor.transform(dataset["test_mod1"])
+    result['first_features'] = first_X.shape[1]
+    test_dataset = OneOmicDataset(first_X)
+    result["test_dataloader"] = DataLoader(
+        test_dataset, batch_size=config['batch_size'], shuffle=False
+    )
+    second_processor = load_processor(config["mod2"], config["task_type"])
+    result["second_test_inverse"] = second_processor.get_inverse_transform(
+        dataset["test_mod2"]
+    )
+    result['second_features'] = second_processor.features
+    result['train_batch_weights'] = None
     return result
 
 
-def preprocess_data(config: dict, dataset, batch_size, is_train):
-    """Preprocesses data.
-
-    Args:
-        config (dict): Data configuration
-        dataset (dict): A dict with train_mod1, train_mod2, test_mod1, test_mod2
-        batch_size (int): Batch size
-
-    Returns:
-        dict: returns train/test dataloaders, functions to invert preprocessing
-        transformation and number of features in each modalities.
-    """
-    result = {}
-
-    if is_train:
-        first_processor = train_processor(config['mod1'], dataset['train_mod1'], config['task_type'])
-        second_processor = train_processor(config['mod2'], dataset['train_mod2'], config['task_type'])
-    else:
-        first_processor = load_processor(config['mod1'], config['task_type'])
-        second_processor = load_processor(config['mod2'], config['task_type'])
-    
-    first_train = preprocess_one_dataset(first_processor, dataset['train_mod1'])
-    result['first_features'] = first_train['X'].shape[1]
-    second_train = preprocess_one_dataset(second_processor, dataset['train_mod2'])
-    result['second_features'] = second_train['X'].shape[1]
-    result['second_train_inverse'] = second_train['inverse']
-    train_dataset = TwoOmicsDataset(first_train['X'], second_train['X'], first_train['batch_idx'])
-    result['train_shuffled_dataloader'] = DataLoader(
+def add_train_dataloader(
+    result, first_processor, second_processor, dataset, batch_size
+):
+    first_X = first_processor.transform(dataset["train_mod1"])
+    result["first_features"] = first_X.shape[1]
+    second_X = second_processor.transform(dataset["train_mod2"])
+    result["second_train_inverse"] = second_processor.get_inverse_transform(dataset['test_mod2'])
+    result["second_features"] = second_X.shape[1]
+    batch_idx = get_batch_idx(dataset["train_mod1"])
+    train_dataset = TwoOmicsDataset(first_X, second_X, batch_idx)
+    result["train_shuffled_dataloader"] = DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
         pin_memory=True,
         num_workers=1,
     )
+    result["train_batch_weights"] = calculate_batch_weights(batch_idx)
 
-    result['train_unshuffled_dataloader'] = DataLoader(
-        train_dataset,
+    train_unshuffled_dataset = OneOmicDataset(first_X)
+    result["train_unshuffled_dataloader"] = DataLoader(
+        train_unshuffled_dataset,
         batch_size=batch_size,
         shuffle=False,
     )
-    result['total_correction_batches'] = len(config['batch_correct'])
-    result['train_batch_weights'] = calculate_batch_weights(first_train['batch_idx'])
-    if not is_train:
-        first_test = preprocess_one_dataset(first_processor, dataset['test_mod1'])
-        test_dataset = TwoOmicsDataset(first_test['X'], first_test['X'])
-        result['test_dataloader'] = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-        test_size_factors = dataset['test_mod1'].obs["size_factors"].to_numpy()
-        test_size_factors = np.expand_dims(test_size_factors, axis=-1)
-        result['second_test_inverse'] = second_processor._get_inverse_transform({'size_factors': test_size_factors})
-        return result
 
-    correction_dataloaders = get_correction_dataloaders(config, dataset, first_processor, batch_size)
-    result['correction_dataloaders'] = correction_dataloaders
-    
-
-    small_idx = np.arange(first_train['X'].shape[0])
+    small_idx = np.arange(first_X.shape[0])
     np.random.shuffle(small_idx)
     small_idx = small_idx[:512]
-    result['small_train_dataloader'] = DataLoader(
-        torch.utils.data.Subset(train_dataset, small_idx),
+    small_dataset = first_X[small_idx]
+    result["small_train_dataloader"] = DataLoader(
+        OneOmicDataset(small_dataset),
         batch_size=batch_size,
         shuffle=False,
     )
-    result['small_idx'] = small_idx
+    result["small_idx"] = small_idx
 
-    first_test = preprocess_one_dataset(first_processor, dataset['test_mod1'])
-    second_test = preprocess_one_dataset(second_processor, dataset['test_mod2'])
-    result['second_test_inverse'] = second_test['inverse']
-    test_dataset = TwoOmicsDataset(first_test['X'], second_test['X'], first_test['batch_idx'])
-    result['test_dataloader'] = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
-    if 'val_mod1' in dataset:
-        first_val = preprocess_one_dataset(first_processor, dataset['val_mod1'])
-        second_val = preprocess_one_dataset(second_processor, dataset['val_mod2'])
-        result['second_val_inverse'] = second_val['inverse']
-        val_dataset = TwoOmicsDataset(first_val['X'], second_val['X'], first_val['batch_idx'])
-        result['val_dataloader'] = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-        
+def add_correction_dataloaders(result, dataset, first_processor, config):
+    correction_dataloaders = []
+    correction_batches = config["batch_correct"]
+    common_dataset = ad.concat([dataset["train_mod1"], dataset["test_mod1"]])
+    dataset_batches = common_dataset.obs["batch"].astype("string")
+    for cor_batch in correction_batches:
+        selected_idx = dataset_batches.apply(lambda batch: batch == cor_batch).values
+        one_batch_dataset = common_dataset[selected_idx]
+        one_batch_X = first_processor.transform(one_batch_dataset)
+        preprocessed_dataset = OneOmicDataset(one_batch_X)
+        correction_dataloaders.append(
+            DataLoader(
+                preprocessed_dataset,
+                batch_size=config['batch_size'],
+                shuffle=True,
+                pin_memory=True,
+                num_workers=1,
+            )
+        )
+    result["correction_dataloaders"] = correction_dataloaders
+
+
+def add_test_dataloader(result, first_processor, second_processor, dataset, batch_size):
+    first_X = first_processor.transform(dataset["test_mod1"])
+    result["second_test_inverse"] = second_processor.get_inverse_transform(dataset['test_mod2'])
+    test_dataset = OneOmicDataset(first_X)
+    result["test_dataloader"] = DataLoader(
+        test_dataset, batch_size=batch_size, shuffle=False
+    )
+
+
+def add_val_dataloader(result, first_processor, second_processor, dataset, batch_size):
+    first_X = first_processor.transform(dataset["val_mod1"])
+    result["second_val_inverse"] = second_processor.get_inverse_transform(dataset['val_mod2'])
+    val_dataset = OneOmicDataset(first_X)
+    result["val_dataloader"] = DataLoader(
+        val_dataset, batch_size=batch_size, shuffle=False
+    )
+
+
+def preprocess_train_data(config, dataset):
+    result = {}
+    first_processor = train_processor(
+        config["mod1"], dataset["train_mod1"], config["task_type"]
+    )
+    second_processor = train_processor(
+        config["mod2"], dataset["train_mod2"], config["task_type"]
+    )
+    add_train_dataloader(result, first_processor, second_processor, dataset, config['batch_size'])
+    add_test_dataloader(result, first_processor, second_processor, dataset, config['batch_size'])
+    add_correction_dataloaders(result, dataset, first_processor, config)
+    if "val_mod1" in dataset:
+        add_val_dataloader(
+            result, first_processor, second_processor, dataset, config['batch_size']
+        )
     return result
+
+
+def preprocess_data(config: dict, dataset, mode=None):
+    if mode == "test":
+        return preprocess_test_data(config, dataset)
+    elif mode == "tune":
+        return None
+    elif mode == "train":
+        return preprocess_train_data(config, dataset)
+    else:
+        raise NotImplementedError()
+
+
+def update_model_config(config: dict, preprocessed_data: dict):
+    model_config = config['model']
+    model_config["feature_extractor_dims"].insert(
+        0, preprocessed_data["first_features"]
+    )
+    model_config["regression_dims"].insert(
+        0, model_config["feature_extractor_dims"][-1]
+    )
+    model_config["regression_dims"].append(preprocessed_data["second_features"])
+    model_config["total_correction_batches"] = len(config['data']['batch_correct'])
+    model_config["batch_weights"] = preprocessed_data["train_batch_weights"]
+    return model_config

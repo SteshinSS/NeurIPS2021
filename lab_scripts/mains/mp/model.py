@@ -109,8 +109,11 @@ class Predictor(pl.LightningModule):
         self.sustain = config["sustain"]
         self.release = config["release"]
         self.balance_classes = config["balance_classes"]
-        self.register_buffer("batch_weights", torch.tensor(config["batch_weights"]))
         self.total_correct_batches = config["total_correction_batches"]
+        if config['batch_weights'] is not None:
+            self.register_buffer("batch_weights", torch.tensor(config["batch_weights"]))
+        else:
+            self.batch_weights = None
 
         self.l2_lambda = config["l2_lambda"]
 
@@ -376,8 +379,7 @@ class TargetCallback(pl.Callback):
         second_pred = []
         with torch.no_grad():
             for i, batch in enumerate(self.dataset):
-                first = batch[0]
-                prediction = pl_module.predict_step(first, i)
+                prediction = pl_module.predict_step(batch, i)
                 second_pred.append(prediction.cpu())
         second_pred = torch.cat(second_pred, dim=0)
         second_pred = self.inverse_transform(second_pred)

@@ -4,18 +4,17 @@ data:
   test_batches: [s3d6, s3d7]
   batch_correct: []
   val_size: 512
+  batch_size: 32
   mod1:
     name: gex
     use_normalized: True
     scale: True
-    type: float
     gene_path: data/genes.csv
     gene_fraction: 0.1
   mod2:
     name: adt
-    use_normalized: True
     scale: True
-    type: float
+
 
 
 model:
@@ -29,7 +28,6 @@ model:
   attack: 10
   sustain: 1500
   release: 500
-  batch_size: 32
   gradient_clip: 1.0
 
   l2_lambda: 0.0001

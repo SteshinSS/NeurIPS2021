@@ -3,7 +3,7 @@ import logging
 import pytorch_lightning as pl
 import torch
 from lab_scripts.data import dataloader
-from lab_scripts.mains.mp import common, preprocessing
+from lab_scripts.mains.mp import preprocessing
 from lab_scripts.mains.mp import model as mp
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping

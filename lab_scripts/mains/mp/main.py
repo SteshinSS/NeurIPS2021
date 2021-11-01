@@ -6,10 +6,9 @@ import pytorch_lightning as pl
 import torch
 import yaml  # type: ignore
 from lab_scripts.data import dataloader
-from lab_scripts.mains.mp import preprocessing, tune, common
+from lab_scripts.mains.mp import preprocessing, tune
 from lab_scripts.mains.mp.preprocessing import base_checkpoint_path, base_config_path
 from lab_scripts.mains.mp import model as mp_model
-from lab_scripts.metrics import mp as mp_metrics
 from lab_scripts.utils import utils
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
@@ -79,14 +78,14 @@ def predict_cite(
         'test_mod1': input_test_mod1,
     }
     preprocessed_data = preprocessing.preprocess_data(
-        data_config, dataset, model_config["batch_size"], is_train=False
+        data_config, dataset, model_config["batch_size"], mode='test'
     )
 
     test_dataloader = preprocessed_data["test_dataloader"]
     second_test_inverse = preprocessed_data["second_test_inverse"]
 
     # Add input feature size
-    model_config = common.update_model_config(model_config, preprocessed_data)
+    model_config = preprocessing.update_model_config(model_config, preprocessed_data)
     log.info("Data is preprocessed")
 
     # Load model
@@ -105,69 +104,6 @@ def predict_cite(
     return second_pred.numpy()  # type: ignore
 
 
-
-def evaluate(config: dict):
-    # Load data
-    data_config = config["data"]
-    dataset = dataloader.load_custom_mp_data(
-        task_type=data_config['task_type'],
-        train_batches=data_config['train_batches'],
-        test_batches=data_config['test_batches']
-    )
-    log.info("Data is loaded")
-
-    # Preprocess data
-    model_config = config["model"]
-    preprocessed_data = preprocessing.preprocess_data(
-        data_config, dataset, model_config["batch_size"], is_train=False
-    )
-
-    train_dataloader = preprocessed_data["train_unshuffled_dataloader"]
-    second_train_inverse = preprocessed_data["second_train_inverse"]
-
-    test_dataloader = preprocessed_data["test_dataloader"]
-    second_test_inverse = preprocessed_data["second_test_inverse"]
-
-    # Add input feature size
-    model_config = common.update_model_config(model_config, preprocessed_data)
-    log.info("Data is preprocessed")
-
-    # Load model
-    checkpoint_path = config.get(
-        "checkpoint_path", base_checkpoint_path + data_config['task_type'] + ".ckpt"
-    )
-    model = mp_model.Predictor.load_from_checkpoint(checkpoint_path, config=model_config)
-    log.info(f"Model is loaded from {checkpoint_path}")
-
-    model.eval()
-
-    # Run predictions
-    def run_dataset(
-        dataloader, name, second_target, second_inverse
-    ):
-        second_pred = []
-        with torch.no_grad():
-            for i, batch in enumerate(dataloader):
-                first = batch[0]
-                prediction = model.predict_step(first, i)
-                second_pred.append(prediction.cpu())
-        second_pred = torch.cat(second_pred, dim=0)
-        second_pred = second_inverse(second_pred)
-        metric = mp_metrics.calculate_target(second_pred, second_target)
-        print(name, metric)
-
-    run_dataset(
-        train_dataloader,
-        "Train",
-        dataset["train_mod2"],
-        second_train_inverse,
-    )
-    run_dataset(
-        test_dataloader,
-        "Test",
-        dataset["test_mod2"],
-        second_test_inverse,
-    )
 
 
 def get_logger(config):
@@ -242,11 +178,11 @@ def train(config: dict):
     # Preprocess data
     model_config = config["model"]
     preprocessed_data = preprocessing.preprocess_data(
-        data_config, dataset, model_config["batch_size"], is_train=True
+        data_config, dataset, mode='train'
     )
     train_dataloaders = [preprocessed_data["train_shuffled_dataloader"]]
     train_dataloaders.extend(preprocessed_data['correction_dataloaders'])
-    model_config = common.update_model_config(model_config, preprocessed_data)
+    model_config = preprocessing.update_model_config(config, preprocessed_data)
     log.info("Data is preprocessed")
 
     # Configure training
@@ -294,8 +230,6 @@ def get_parser():
     parser_train = subparsers.add_parser("train")
     parser_train.add_argument("config", type=argparse.FileType("r"))
     parser_train.add_argument("--wandb", action="store_true", default=False)
-    parser_evaluate = subparsers.add_parser("evaluate")
-    parser_evaluate.add_argument("config", type=argparse.FileType("r"))
     parser_tune = subparsers.add_parser("tune")
     parser_tune.add_argument("config", type=argparse.FileType("r"))
     return parser
@@ -312,8 +246,6 @@ def cli():
     if args.action == "train":
         config["wandb"] = args.wandb
         train(config)
-    elif args.action == "evaluate":
-        evaluate(config)
     elif args.action == "tune":
         tune.tune_hp(config)
     else:

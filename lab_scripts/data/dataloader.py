@@ -44,6 +44,12 @@ def load_custom_mp_data(task_type, train_batches, test_batches, val_size=None):
     elif task_type == "adt_to_gex":
         first = ad.read_h5ad(COMMON_ADT)
         second = ad.read_h5ad(COMMON_GEX_ADT)
+    elif task_type == 'atac_to_gex':
+        first = ad.read_h5ad(COMMON_ATAC)
+        second = ad.read_h5ad(COMMON_GEX_ATAC)
+    elif task_type == 'gex_to_atac':
+        first = ad.read_h5ad(COMMON_GEX_ATAC)
+        second = ad.read_h5ad(COMMON_ATAC)
     else:
         raise NotImplementedError()
 
