@@ -1,25 +1,27 @@
 data: 
-  task_type: adt_to_gex
+  task_type: gex_to_atac
   train_batches: [s1d1, s1d2, s2d1, s2d4]
   test_batches: [s3d6, s3d7]
   batch_correct: []
   val_size: 512
   batch_size: 32
   mod1:
-    name: adt
-    use_normalized: True
-    scale: True
-  mod2:
     name: gex
     use_normalized: True
     scale: True
+  mod2:
+    name: atac
+    scale: True
+    mapping_file: data/region_to_gene.csv
+    use_gene_activity: True
+    window: 100
 
 
 
 model:
   first_dim: [1000, 900, 750, 300, 200, 100, 50]
   first_dropout: []
-  second_dim: [150, 150, 100, 75, 50]
+  second_dim: [1000, 900, 750, 300, 200, 100, 50]
   second_dropout: []
   dropout: 0.5
   latent_dim: 30

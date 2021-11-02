@@ -6,7 +6,7 @@ import pandas as pd
 def load_custom_je_data(task_type, train_batches, test_batches, val_size=None):
     if task_type in ["cite_pre", "cite"]:
         result = load_custom_mp_data(
-            "gex_to_adt", train_batches, test_batches, val_size
+            "gex_to_adt", train_batches, test_batches, val_size, do_filter_regions=False
         )
         solution = ad.read_h5ad(JE_CITE_SOLUTION)
         result["train_solution"] = solution[result["train_mod1"].obs.index]
@@ -20,7 +20,7 @@ def load_custom_je_data(task_type, train_batches, test_batches, val_size=None):
 
 
 def load_custom_mm_data(task_type, train_batches, test_batches, val_size=None):
-    result = load_custom_mp_data(task_type, train_batches, test_batches, val_size)
+    result = load_custom_mp_data(task_type, train_batches, test_batches, val_size, do_filter_regions=False)
     train_n = result["train_mod1"].shape[0]
     train_pairing_ix = np.arange(train_n)
     result["train_sol"] = ad.AnnData(
@@ -38,7 +38,7 @@ def load_custom_mm_data(task_type, train_batches, test_batches, val_size=None):
     return result
 
 
-def load_custom_mp_data(task_type, train_batches, test_batches, val_size=None):
+def load_custom_mp_data(task_type, train_batches, test_batches, val_size=None, do_filter_regions=True):
     if task_type == "gex_to_adt":
         first = ad.read_h5ad(COMMON_GEX_ADT)
         second = ad.read_h5ad(COMMON_ADT)
@@ -51,7 +51,8 @@ def load_custom_mp_data(task_type, train_batches, test_batches, val_size=None):
     elif task_type == "gex_to_atac":
         first = ad.read_h5ad(COMMON_GEX_ATAC)
         second = ad.read_h5ad(COMMON_ATAC)
-        second = filter_regions(second)
+        if do_filter_regions:
+            second = filter_regions(second)
 
     else:
         raise NotImplementedError()

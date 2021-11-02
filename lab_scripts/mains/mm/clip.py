@@ -1,13 +1,13 @@
 from collections import OrderedDict
 
+import numpy as np
+import plotly.express as px
 import pytorch_lightning as pl
 import torch
 from lab_scripts.metrics import mm
 from lab_scripts.models.common import plugins
 from torch import nn
 from torch.nn import functional as F
-import numpy as np
-import plotly.express as px
 
 
 def construct_net(dims, activation_name: str, latent_dim: int, dropout_pos, dropout):
@@ -32,29 +32,41 @@ class Clip(pl.LightningModule):
     def __init__(self, config: dict):
         super().__init__()
         self.first_net = construct_net(
-            config["first_dim"], config["activation"], config["latent_dim"], config['first_dropout'], config['dropout']
+            config["first_dim"],
+            config["activation"],
+            config["latent_dim"],
+            config["first_dropout"],
+            config["dropout"],
         )
         self.second_net = construct_net(
-            config["second_dim"], config["activation"], config["latent_dim"], config['second_dropout'], config['dropout']
+            config["second_dim"],
+            config["activation"],
+            config["latent_dim"],
+            config["second_dropout"],
+            config["dropout"],
         )
         self.lr = config["lr"]
         self.attack = config["attack"]
         self.sustain = config["sustain"]
         self.release = config["release"]
         self.train_per_batch = config["train_per_batch"]
-        if config['train_temperature'] == -1:
+        if config["train_temperature"] == -1:
             self.learn_temperature = True
             self.temperature = nn.Parameter(torch.zeros([]))
         else:
             self.learn_temperature = False
-            self.register_buffer("temperature", torch.tensor(config["train_temperature"]))
-        self.l2_lambda = config['l2_lambda']
+            self.register_buffer(
+                "temperature", torch.tensor(config["train_temperature"])
+            )
+        self.l2_lambda = config["l2_lambda"]
 
     def forward(self, first, second):
         first_embed = self.first_net(first)
         first_embed = first_embed / torch.linalg.norm(first_embed, dim=1, keepdim=True)
         second_embed = self.second_net(second)
-        second_embed = second_embed / torch.linalg.norm(second_embed, dim=1, keepdim=True)
+        second_embed = second_embed / torch.linalg.norm(
+            second_embed, dim=1, keepdim=True
+        )
         return first_embed, second_embed
 
     def training_step(self, batch, batch_n):
@@ -67,11 +79,11 @@ class Clip(pl.LightningModule):
                 loss += self.calculate_loss(first_embed[idx], second_embed[idx])
         else:
             loss = self.calculate_loss(first_embed, second_embed)
-        self.log('train_loss', loss, logger=True, prog_bar=False)
+        self.log("train_loss", loss, logger=True, prog_bar=False)
         if self.learn_temperature:
-            self.log('temp', self.temperature, logger=True, prog_bar=False)
+            self.log("temp", self.temperature, logger=True, prog_bar=False)
         return loss
-    
+
     def predict_step(self, batch, batch_n):
         first, second, batch_idx = batch
         return self(first, second)
@@ -84,7 +96,9 @@ class Clip(pl.LightningModule):
         return (first_loss + second_loss) / 2.0
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=self.l2_lambda)
+        optimizer = torch.optim.Adam(
+            self.parameters(), lr=self.lr, weight_decay=self.l2_lambda
+        )
 
         def lr_foo(epoch):
             epoch = epoch + 1
@@ -128,7 +142,9 @@ class TargetCallback(pl.Callback):
         batch_idx = torch.cat(batch_idx)
         n = first_embed.shape[0]
         if self.temperature == -1:
-            similiarity = (first_embed @ second_embed.t()) * np.exp(pl_module.temperature.detach().cpu())
+            similiarity = (first_embed @ second_embed.t()) * np.exp(
+                pl_module.temperature.detach().cpu()
+            )
         else:
             similiarity = (first_embed @ second_embed.t()) * np.exp(self.temperature)
         unique_batches = torch.unique(batch_idx)
@@ -148,10 +164,8 @@ class TargetCallback(pl.Callback):
             confidence = confidence[idx]
 
             fig = px.histogram(confidence, nbins=200, color=color)
-            trainer.logger.experiment.log({
-                'confidence': fig
-            })
-        
+            trainer.logger.experiment.log({"confidence": fig})
+
         if self.log_top:
             (_, idx) = torch.sort(similiarity, descending=True)
             idx = idx.numpy()
@@ -159,6 +173,7 @@ class TargetCallback(pl.Callback):
                 good = 0
 
                 for i in range(n):
-                    good += i in idx[i][:int(top * n)]
-                self.log(f'{self.prefix}_top{top}', good / n, logger=True, prog_bar=False)
-
+                    good += i in idx[i][: int(top * n)]
+                self.log(
+                    f"{self.prefix}_top{top}", good / n, logger=True, prog_bar=False
+                )
