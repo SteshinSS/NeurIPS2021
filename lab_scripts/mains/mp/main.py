@@ -2,21 +2,21 @@ import argparse
 import logging
 
 import anndata as ad
+import numpy as np
 import pytorch_lightning as pl
 import torch
 import yaml  # type: ignore
 from lab_scripts.data import dataloader
-from lab_scripts.mains.mp import preprocessing, tune
-from lab_scripts.mains.mp.preprocessing import base_checkpoint_path, base_config_path
 from lab_scripts.mains.mp import model as mp_model
+from lab_scripts.mains.mp import preprocessing, tune
+from lab_scripts.mains.mp.preprocessing import (base_checkpoint_path,
+                                                base_config_path)
 from lab_scripts.utils import utils
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 from scipy.sparse import csr_matrix
-import numpy as np
 
 log = logging.getLogger("mp")
-
 
 
 def predict_submission(
@@ -34,18 +34,15 @@ def predict_submission(
 
     # Select data type
     task_type = utils.get_task_type(mod1, mod2)
-    predictions = None
-    if task_type == "gex_to_atac":
-        # predictions = predict_gex_to_atac(...)
-        pass
-    elif task_type == "atac_to_gex":
-        # predictions = predict_atac_to_gex(...)
-        pass
-    elif task_type in ["gex_to_adt", "adt_to_gex"]:
-        predictions = predict_cite(input_train_mod1, input_train_mod2, input_test_mod1, task_type, resources_dir)
-    else:
-        raise ValueError(f"Inappropriate dataset types: {task_type}")
-
+    
+    predictions = predict(
+        input_train_mod1,
+        input_train_mod2,
+        input_test_mod1,
+        task_type,
+        resources_dir,
+    )
+    
     # Convert matrix into csr_matrix (is needed for submission)
     predictions = csr_matrix(predictions)
 
@@ -59,38 +56,42 @@ def predict_submission(
     return result
 
 
-def predict_cite(
+def predict(
     input_train_mod1: ad.AnnData,
     input_train_mod2: ad.AnnData,
     input_test_mod1: ad.AnnData,
     task_type: str,
     resources_dir,
 ):
-    config_path = resources_dir + base_config_path + task_type + '.yaml'
-    with open(config_path, 'r') as f:
+    config_path = resources_dir + base_config_path + task_type + ".yaml"
+    with open(config_path, "r") as f:
         config = yaml.safe_load(f)
-    
+
     model_config = config["model"]
     data_config = config["data"]
     dataset = {
-        'train_mod1': input_train_mod1,
-        'train_mod2': input_train_mod2,
-        'test_mod1': input_test_mod1,
+        "train_mod1": input_train_mod1,
+        "train_mod2": input_train_mod2,
+        "test_mod1": input_test_mod1,
     }
     preprocessed_data = preprocessing.preprocess_data(
-        data_config, dataset, model_config["batch_size"], mode='test'
+        data_config, dataset, mode="test"
     )
 
     test_dataloader = preprocessed_data["test_dataloader"]
     second_test_inverse = preprocessed_data["second_test_inverse"]
 
     # Add input feature size
-    model_config = preprocessing.update_model_config(model_config, preprocessed_data)
+    model_config = preprocessing.update_model_config(config, preprocessed_data)
     log.info("Data is preprocessed")
 
     # Load model
-    checkpoint_path = resources_dir + base_checkpoint_path + data_config['task_type'] + ".ckpt"
-    model = mp_model.Predictor.load_from_checkpoint(checkpoint_path, config=model_config)
+    checkpoint_path = (
+        resources_dir + base_checkpoint_path + data_config["task_type"] + ".ckpt"
+    )
+    model = mp_model.Predictor.load_from_checkpoint(
+        checkpoint_path, config=model_config
+    )
     log.info(f"Model is loaded from {checkpoint_path}")
 
     model.eval()
@@ -101,9 +102,7 @@ def predict_cite(
             second_pred.append(prediction.cpu())
     second_pred = torch.cat(second_pred, dim=0)  # type: ignore
     second_pred = second_test_inverse(second_pred)
-    return second_pred.numpy()  # type: ignore
-
-
+    return second_pred  # type: ignore
 
 
 def get_logger(config):
@@ -113,7 +112,7 @@ def get_logger(config):
             project="mp",
             log_model=False,  # type: ignore
             config=config,
-            tags=[config['data']['task_type']],
+            tags=[config["data"]["task_type"]],
             config_exclude_keys=["wandb"],
         )
         pl_logger.experiment.define_metric(name="train_m", summary="min")
@@ -121,7 +120,9 @@ def get_logger(config):
     return pl_logger
 
 
-def get_callbacks(preprocessed_data: dict, dataset: dict, model_config: dict, logger=None):
+def get_callbacks(
+    preprocessed_data: dict, dataset: dict, model_config: dict, logger=None
+):
     small_idx = preprocessed_data["small_idx"]
     train_callback = mp_model.TargetCallback(
         preprocessed_data["small_train_dataloader"],
@@ -131,7 +132,7 @@ def get_callbacks(preprocessed_data: dict, dataset: dict, model_config: dict, lo
     )
     callbacks = [train_callback]
 
-    if 'val_dataloader' in preprocessed_data:
+    if "val_dataloader" in preprocessed_data:
         val_callback = mp_model.TargetCallback(
             preprocessed_data["val_dataloader"],
             preprocessed_data["second_val_inverse"],
@@ -148,11 +149,11 @@ def get_callbacks(preprocessed_data: dict, dataset: dict, model_config: dict, lo
     )
     callbacks.append(test_callback)
 
-    if model_config['do_tsne']:
+    if model_config["do_tsne"]:
         tsne_callback = mp_model.BatchEffectCallback(
-            train_dataset=preprocessed_data['train_unshuffled_dataloader'],
-            test_dataset=preprocessed_data['test_dataloader'],
-            frequency=model_config['tsne_frequency'],
+            train_dataset=preprocessed_data["train_unshuffled_dataloader"],
+            test_dataset=preprocessed_data["test_dataloader"],
+            frequency=model_config["tsne_frequency"],
         )
         callbacks.append(tsne_callback)
 
@@ -168,21 +169,23 @@ def train(config: dict):
     # Load data
     data_config = config["data"]
     dataset = dataloader.load_custom_mp_data(
-        task_type=data_config['task_type'],
-        train_batches=data_config['train_batches'],
-        test_batches=data_config['test_batches'],
-        val_size=data_config['val_size']
+        task_type=data_config["task_type"],
+        train_batches=data_config["train_batches"],
+        test_batches=data_config["test_batches"],
+        val_size=data_config["val_size"],
     )
     log.info("Data is loaded")
 
     # Preprocess data
-    model_config = config["model"]
     preprocessed_data = preprocessing.preprocess_data(
-        data_config, dataset, mode='train'
+        data_config, dataset, mode="train"
     )
-    train_dataloaders = [preprocessed_data["train_shuffled_dataloader"]]
-    train_dataloaders.extend(preprocessed_data['correction_dataloaders'])
     model_config = preprocessing.update_model_config(config, preprocessed_data)
+    if model_config["total_correction_batches"] > 0:
+        train_dataloaders = [preprocessed_data["train_shuffled_dataloader"]]
+        train_dataloaders.extend(preprocessed_data["correction_dataloaders"])
+    else:
+        train_dataloaders = preprocessed_data["train_shuffled_dataloader"]
     log.info("Data is preprocessed")
 
     # Configure training
@@ -201,7 +204,9 @@ def train(config: dict):
         callbacks=callbacks,
         deterministic=True,
         checkpoint_callback=False,
-        gradient_clip_val=model_config["gradient_clip"] if not model_config['use_critic'] else 0.0,
+        gradient_clip_val=model_config["gradient_clip"]
+        if not model_config["use_critic"]
+        else 0.0,
     )
     trainer.fit(model, train_dataloaders=train_dataloaders)
 

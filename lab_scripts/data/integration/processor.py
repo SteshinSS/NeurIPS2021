@@ -5,10 +5,8 @@ import numpy as np
 import pandas as pd
 import torch
 from sklearn.preprocessing import StandardScaler
-from lab_scripts.data.integration import atac
 from torch.utils.data import Dataset
 import logging
-
 
 
 class Processor:
@@ -33,7 +31,7 @@ class Processor:
 class GEXProcessor(Processor):
     def __init__(self, config: dict):
         super().__init__(config)
-        self.log = logging.getLogger('GEXProcessor')
+        self.log = logging.getLogger("GEXProcessor")
         self.use_normalized = config["use_normalized"]
         gene_fraction = config.get("gene_fraction", None)
         gene_path = config.get("gene_path", None)
@@ -90,7 +88,9 @@ class GEXProcessor(Processor):
         f.use_normalized = self.use_normalized
         if not self.use_normalized:
             if dataset is None:
-                raise RuntimeError('To get inverse transformation of not normalized values, pass the dataset with size_factors.')
+                raise RuntimeError(
+                    "To get inverse transformation of not normalized values, pass the dataset with size_factors."
+                )
             f.size_factors = self.get_size_factors(dataset)
         return f
 
@@ -118,21 +118,21 @@ class GEXProcessor(Processor):
 
 class ATACProcessor(Processor):
     def __init__(self, config: dict):
-        self.log = logging.getLogger('ATACProcessor')
+        self.log = logging.getLogger("ATACProcessor")
         super().__init__(config)
-        self.mapping_file = config['mapping_file']
-        self.use_gene_activity = config['use_gene_activity']
+        self.mapping_file = config["mapping_file"]
+        self.use_gene_activity = config["use_gene_activity"]
         if self.use_gene_activity:
             self._prepare_gene_mapping()
-        self.window = config['window']
-    
+        self.window = config["window"]
+
     def fit(self, dataset: ad.AnnData):
         if self.scale:
             matrix = self.get_matrix(dataset, fit=True)
             self.scaler = StandardScaler()
             self.scaler.fit(matrix)
         self.fitted = True
-    
+
     def transform(self, dataset: ad.AnnData):
         if not self.fitted:
             raise RuntimeError(
@@ -142,7 +142,7 @@ class ATACProcessor(Processor):
         if self.scale:
             matrix = self.scaler.transform(matrix)
         return torch.tensor(matrix, dtype=torch.float32)
-    
+
     def get_inverse_transform(self, dataset: ad.AnnData = None):
         @no_type_check
         def f(matrix: torch.Tensor):
@@ -150,41 +150,45 @@ class ATACProcessor(Processor):
             if f.scale:
                 matrix = f.scaler.inverse_transform(matrix)
             return matrix
+
         f.scale = self.scale
         if self.scale:
             f.scaler = self.scaler
         return f
-    
+
     def get_matrix(self, dataset: ad.AnnData, fit: bool):
-        stage = 'fit' if fit else 'transform'
+        stage = "fit" if fit else "transform"
         result_matrices = []
         if self.window > 0:
-            self.log.info(f'Creating windows in {stage}...')
+            self.log.info(f"Creating windows in {stage}...")
             result_matrices.append(self._create_windows(dataset))
         if self.use_gene_activity:
-            self.log.info(f'Creating gene activity matrix in {stage}...')
+            self.log.info(f"Creating gene activity matrix in {stage}...")
             result_matrices.append(self._create_gene_activity_matrix(dataset))
+        if self.window <= 0 and not self.use_gene_activity:
+            # Just take atac matric as it is
+            result_matrices.append(dataset.X.toarray())
         return np.concatenate(result_matrices, axis=1)
-    
+
     def _create_windows(self, dataset: ad.AnnData):
         X = dataset.X
         window = self.window
         windows = []
         for i in range(0, X.shape[1] - window, window):
-            windows.append(X[:, i:i + window].sum(axis=1))
+            windows.append(X[:, i : i + window].sum(axis=1))
         return np.concatenate(windows, axis=1)
-    
+
     def _create_gene_activity_matrix(self, dataset: ad.AnnData):
         X = dataset.X.toarray()
         gene_activity = np.zeros((dataset.shape[0], self.total_genes.shape[0]))
         for i, region in enumerate(dataset.var.index):
-            if region in self.region_to_gene.keys():
-                gene_id = self.gene_to_id[self.region_to_gene[region]]
+            if region in self.region_to_id.keys():
+                gene_id = self.region_to_id[region]
                 gene_activity[:, gene_id] += X[:, i].flatten()
         return gene_activity
-    
+
     def _prepare_gene_mapping(self):
-        genes = pd.read_csv(self.mapping_file, index_col=0)['gene_id']
+        genes = pd.read_csv(self.mapping_file, index_col=0)["gene_id"]
         self.region_to_gene = {}
         for region, gene in genes.iteritems():
             self.region_to_gene[region] = gene
@@ -193,13 +197,16 @@ class ATACProcessor(Processor):
         self.gene_to_id = {}
         for i, gene in enumerate(self.total_genes):
             self.gene_to_id[gene] = i
-
+        
+        self.region_to_id = {}
+        for region, gene in genes.iteritems():
+            self.region_to_id[region] = self.gene_to_id[gene]
 
 
 class ADTProcessor(Processor):
     def __init__(self, config: dict):
         super().__init__(config)
-    
+
     def fit(self, dataset: ad.AnnData):
         matrix = dataset.X.toarray().astype(np.float32)
         if self.scale:
@@ -207,7 +214,7 @@ class ADTProcessor(Processor):
             self.scaler.fit(matrix)
         self.features = matrix.shape[1]
         self.fitted = True
-    
+
     def transform(self, dataset: ad.AnnData):
         if not self.fitted:
             raise RuntimeError(
@@ -216,9 +223,9 @@ class ADTProcessor(Processor):
         matrix = dataset.X.toarray().astype(np.float32)
         if self.scale:
             matrix = self.scaler.transform(matrix)
-        
+
         return torch.tensor(matrix)
-    
+
     def get_inverse_transform(self, dataset: ad.AnnData = None):
         @no_type_check
         def f(matrix: torch.Tensor):
@@ -226,7 +233,7 @@ class ADTProcessor(Processor):
             if f.scale:
                 matrix = f.scaler.inverse_transform(matrix)
             return matrix
-        
+
         f.scale = self.scale
         if self.scale:
             f.scaler = self.scaler

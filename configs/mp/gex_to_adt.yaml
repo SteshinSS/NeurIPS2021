@@ -16,7 +16,6 @@ data:
     scale: True
 
 
-
 model:
   feature_extractor_dims: [1000, 700, 500, 300]
   fe_dropout: []
@@ -30,7 +29,7 @@ model:
   release: 500
   gradient_clip: 1.0
 
-  l2_lambda: 0.0001
+  l2_lambda: 0.0
   dropout: 0.5
 
   use_mmd_loss: False

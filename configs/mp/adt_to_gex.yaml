@@ -2,7 +2,7 @@ data:
   task_type: adt_to_gex
   train_batches: [s1d1, s1d2, s2d1, s2d4]
   test_batches: [s3d6, s3d7]
-  batch_correct: [s1d1, s2d1]
+  batch_correct: []
   val_size: 512
   batch_size: 32
   mod1:
@@ -18,7 +18,7 @@ data:
 model:
   feature_extractor_dims: [150, 150, 150, 100]
   fe_dropout: []
-  regression_dims: [100, 250, 500, 750, 1000, 2000]
+  regression_dims: [100, 250, 500, 750, 1000, 2000, 5000, 7000]
   regression_dropout: []
   activation: leaky_relu
   lr: 0.001
@@ -28,10 +28,10 @@ model:
   release: 500
   gradient_clip: 1.0
 
-  l2_lambda: 0.0001
+  l2_lambda: 0.0
   dropout: 0.5
 
-  use_mmd_loss: True
+  use_mmd_loss: False
   mmd_lambda: 0.5
 
   use_l2_loss: False

@@ -110,7 +110,7 @@ class Predictor(pl.LightningModule):
         self.release = config["release"]
         self.balance_classes = config["balance_classes"]
         self.total_correct_batches = config["total_correction_batches"]
-        if config['batch_weights'] is not None:
+        if config["batch_weights"] is not None:
             self.register_buffer("batch_weights", torch.tensor(config["batch_weights"]))
         else:
             self.batch_weights = None
@@ -237,11 +237,15 @@ class Predictor(pl.LightningModule):
         return critic_loss
 
     def automatic_step(self, batch, batch_n):
-        main_batch = batch[0]
-        correction_batches = batch[1:]
-        loss = self.normal_step(main_batch)
+        loss = 0.0
         if self.total_correct_batches > 0:
+            main_batch = batch[0]
+            correction_batches = batch[1:]
             loss += self.correction_step(correction_batches)
+        else:
+            main_batch = batch
+
+        loss += self.normal_step(main_batch)
         self.log("loss", loss, logger=True)
         return loss
 

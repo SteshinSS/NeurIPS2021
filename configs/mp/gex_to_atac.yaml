@@ -1,27 +1,27 @@
 data: 
-  task_type: gex_to_adt
-  train_batches: [s1d1, s1d2, s2d1, s2d4]
-  test_batches: [s3d6, s3d7]
+  task_type: gex_to_atac
+  train_batches: [s1d1, s2d4, s2d1, s3d6]
+  test_batches: [s1d2]
   batch_correct: []
   val_size: 512
+  batch_size: 32
   mod1:
     name: gex
     use_normalized: True
     scale: True
     type: float
-    gene_path: data/genes.csv
-    gene_fraction: 0.1
   mod2:
-    name: adt
-    use_normalized: True
+    name: atac
     scale: True
-    type: float
+    mapping_file: data/region_to_gene.csv
+    use_gene_activity: False
+    window: 0
 
 
 model:
-  feature_extractor_dims: [1000, 700, 500, 300]
+  feature_extractor_dims: [5000, 1000, 1000]
   fe_dropout: []
-  regression_dims: [100, 100]
+  regression_dims: [1000, 1000, 2000, 5000]
   regression_dropout: []
   activation: leaky_relu
   lr: 0.001
@@ -29,10 +29,9 @@ model:
   attack: 10
   sustain: 1500
   release: 500
-  batch_size: 32
   gradient_clip: 1.0
 
-  l2_lambda: 0.0001
+  l2_lambda: 0.0
   dropout: 0.5
 
   use_mmd_loss: False

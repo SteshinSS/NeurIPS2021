@@ -17,67 +17,62 @@ def get_logger(config):
         project="mp",
         log_model=False,  # type: ignore
         config=config,
-        tags=["tune"],
+        tags=[config["data"]["task_type"]],
         config_exclude_keys=["wandb"],
     )
     pl_logger.experiment.define_metric(name="train_m", summary="min")
     pl_logger.experiment.define_metric(name="test_m", summary="min")
     return pl_logger
 
-
 def get_callbacks(preprocessed_data: dict, dataset: dict):
     small_idx = preprocessed_data["small_idx"]
-    train_val_callback = mp.TargetCallback(
-        preprocessed_data["small_dataloader"],
+    train_callback = mp.TargetCallback(
+        preprocessed_data["small_train_dataloader"],
         preprocessed_data["second_train_inverse"],
         dataset["train_mod2"][small_idx],
         prefix="train",
     )
+    callbacks = [train_callback]
 
-    test_val_callback = mp.TargetCallback(
+    if "val_dataloader" in preprocessed_data:
+        val_callback = mp.TargetCallback(
+            preprocessed_data["val_dataloader"],
+            preprocessed_data["second_val_inverse"],
+            dataset["val_mod2"],
+            prefix="val",
+        )
+        callbacks.append(val_callback)
+
+    test_callback = mp.TargetCallback(
         preprocessed_data["test_dataloader"],
         preprocessed_data["second_test_inverse"],
         dataset["test_mod2"],
         prefix="test",
     )
+    callbacks.append(test_callback)
 
     learning_rate_monitor = LearningRateMonitor(
         logging_interval="step",
     )
+    callbacks.append(learning_rate_monitor)
 
     early_stopping = EarlyStopping(monitor="test_m", patience=50, mode="min")
-    callbacks = [
-        train_val_callback,
-        test_val_callback,
-        early_stopping,
-        learning_rate_monitor,
-    ]
+    callbacks.append(early_stopping)
     return callbacks
 
 
-def tune_one_config(config: dict, preprocessed_data: dict):
-    # Solution of strange bug.
-    # See https://github.com/pytorch/pytorch/issues/57794#issuecomment-834976384
-    torch.cuda.set_device(0)
-    # Load data
-    model_config = config["model"]
-    model_config["feature_extractor_dims"] = fe_dims[model_config["fe_dims"]]
-    model_config["regression_dims"] = re_dims[model_config["re_dims"]]
-    model_config["fe_dropout"] = fe_drop[model_config["fe_drop"]]
-    model_config["l2_lambda"] = l2[model_config["l2"]]
-    model_config["mmd_lambda"] = mmd[model_config["mmd"]]
-    model_config["l2_loss_lambda"] = l2_loss[model_config["l2_loss"]]
-    model_config["coral_lambda"] = coral[model_config["coral"]]
-
-    model_config = common.update_model_config(model_config, preprocessed_data)
-    train_dataloader = preprocessed_data["train_dataloader"]
+def tune_one_config(config: dict, preprocessed_data: dict, dataset):
+    model_config = preprocessing.update_model_config(config, preprocessed_data)
+    if model_config["total_correction_batches"] > 0:
+        train_dataloaders = [preprocessed_data["train_shuffled_dataloader"]]
+        train_dataloaders.extend(preprocessed_data["correction_dataloaders"])
+    else:
+        train_dataloaders = preprocessed_data["train_shuffled_dataloader"]
     log.info("Data is preprocessed")
 
     # Configure training
     pl_logger = get_logger(config)
-    callbacks = get_callbacks(preprocessed_data, preprocessed_data["dataset"])
-    if not pl_logger:
-        callbacks.pop()
+    callbacks = get_callbacks(preprocessed_data, dataset)
 
     use_gpu = torch.cuda.is_available()
     if not use_gpu:
@@ -90,62 +85,44 @@ def tune_one_config(config: dict, preprocessed_data: dict):
         pl_logger.watch(model)
 
     trainer = pl.Trainer(
-        gpus=use_gpu,
-        max_epochs=2000,
+        gpus=1,
+        max_epochs=5000,
         logger=pl_logger,
         callbacks=callbacks,
         deterministic=True,
         checkpoint_callback=False,
-        gradient_clip_val=model_config["gradient_clip"],
+        gradient_clip_val=model_config["gradient_clip"]
+        if not model_config["use_critic"]
+        else 0.0,
     )
-    trainer.fit(model, train_dataloaders=train_dataloader)
+    trainer.fit(model, train_dataloaders=train_dataloaders)
 
 
 def tune_hp(config: dict):
     data_config = config["data"]
-    dataset = dataloader.load_data(data_config["dataset_name"])
-    model_config = config["model"]
+    dataset = dataloader.load_custom_mp_data(
+        task_type=data_config["task_type"],
+        train_batches=data_config["train_batches"],
+        test_batches=data_config["test_batches"],
+        val_size=data_config["val_size"],
+    )
     preprocessed_data = preprocessing.preprocess_data(
-        data_config, dataset, model_config["batch_size"], is_train=True
+        data_config, dataset, mode="train"
     )
+    
     log.info("Data is preprocessed")
-
-    config["model"].update(model_search_space)
-    preprocessed_data["dataset"] = dataset
-    tune.run(
-        tune.with_parameters(tune_one_config, preprocessed_data=preprocessed_data),
-        metric="test_m",
-        mode="min",
-        config=config,
-        resources_per_trial={"gpu": 1, "cpu": 16},
-        num_samples=-1,
-        local_dir="tune",
-    )
+    for i in range(10):
+        new_config = config.copy()
+        new_config['model'] = update_config(new_config['model'], i)
+        tune_one_config(new_config, preprocessed_data, dataset)
 
 
-fe_dims = [
-    [1000, 700, 500, 300],
-    [1000, 700, 500, 300],
-    [1000, 750, 600, 400],
-    [1000, 700, 500, 300, 300],
-    [1000, 700, 500, 300, 300, 300],
-]
 
-re_dims = [[200, 200, 150], [200, 150], [200, 200, 200]]
+def update_config(config: dict, i):
+    if i == 0:
+        return config
+    if i == 1:
+        config['critic_iterations'] = 3 
+    return config
 
-fe_drop = [
-    [],
-    [],
-    [],
-    [0],
-    [1],
-]
-
-l2 = [0.0, 0.0, 0.0, 0.0, 0.0001, 0.0005]
-
-mmd = [0.0, 0.0, 1.0, 10.0]
-
-l2_loss = [0.0, 0.0, 0.001, 0.005]
-
-coral = [0.0, 1.0, 5.0, 10.0]
 

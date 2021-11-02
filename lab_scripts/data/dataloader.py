@@ -1,5 +1,6 @@
 import anndata as ad
 import numpy as np
+import pandas as pd
 
 
 def load_custom_je_data(task_type, train_batches, test_batches, val_size=None):
@@ -8,8 +9,8 @@ def load_custom_je_data(task_type, train_batches, test_batches, val_size=None):
             "gex_to_adt", train_batches, test_batches, val_size
         )
         solution = ad.read_h5ad(JE_CITE_SOLUTION)
-        result["train_solution"] = solution[result['train_mod1'].obs.index]
-        result["test_solution"] = solution[result['test_mod1'].obs.index]
+        result["train_solution"] = solution[result["train_mod1"].obs.index]
+        result["test_solution"] = solution[result["test_mod1"].obs.index]
     elif task_type == "atac":
         raise NotImplementedError()
     else:
@@ -44,12 +45,14 @@ def load_custom_mp_data(task_type, train_batches, test_batches, val_size=None):
     elif task_type == "adt_to_gex":
         first = ad.read_h5ad(COMMON_ADT)
         second = ad.read_h5ad(COMMON_GEX_ADT)
-    elif task_type == 'atac_to_gex':
+    elif task_type == "atac_to_gex":
         first = ad.read_h5ad(COMMON_ATAC)
         second = ad.read_h5ad(COMMON_GEX_ATAC)
-    elif task_type == 'gex_to_atac':
+    elif task_type == "gex_to_atac":
         first = ad.read_h5ad(COMMON_GEX_ATAC)
         second = ad.read_h5ad(COMMON_ATAC)
+        second = filter_regions(second)
+
     else:
         raise NotImplementedError()
 
@@ -78,6 +81,15 @@ def load_custom_mp_data(task_type, train_batches, test_batches, val_size=None):
         result["train_mod2"] = train_second
     return result
 
+
+def filter_regions(data: ad.AnnData):
+    selected_regions = pd.read_csv("data/selected_regions.csv", index_col=0)
+    selected_regions = selected_regions.iloc[:, 0].to_list()
+    selected_regions = set(selected_regions)
+    region_mask = data.var.index.to_series().apply(
+        lambda region: region in selected_regions
+    )
+    return data[:, region_mask]
 
 
 def select_batches(dataset, batches):
