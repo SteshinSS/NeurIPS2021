@@ -7,7 +7,7 @@ import pytorch_lightning as pl
 import torch
 import yaml  # type: ignore
 from lab_scripts.data import dataloader
-from lab_scripts.mains.mm import clip, preprocessing
+from lab_scripts.mains.mm import clip, preprocessing, tune
 from lab_scripts.mains.mm.preprocessing import (base_checkpoint_path,
                                                 base_config_path)
 from lab_scripts.metrics import mm
@@ -81,7 +81,7 @@ def predict(
     data_config = config["data"]
     model_config = config["model"]
     preprocessed_data = preprocessing.preprocess_data(
-        data_config, dataset, mode='test', resources_dir=resources_dir
+        data_config, dataset, mode="test", resources_dir=resources_dir
     )
     model_config = preprocessing.update_model_config(config, preprocessed_data)
     checkpoint_path = resources_dir + base_checkpoint_path + task_type + ".ckpt"
@@ -124,9 +124,7 @@ def evaluate(config: dict):
 
     # Preprocess data
     model_config = config["model"]
-    preprocessed_data = preprocessing.preprocess_data(
-        data_config, dataset, mode='test'
-    )
+    preprocessed_data = preprocessing.preprocess_data(data_config, dataset, mode="test")
     raise NotImplementedError()
     model_config = preprocessing.update_model_config(model_config, preprocessed_data)
     log.info("Data is preprocessed")
@@ -208,16 +206,22 @@ def find_best_temperature(embeddings):
 def get_logger(config):
     pl_logger = None
     if config["wandb"]:
+        if config["data"]["task_type"] in ["atac_to_gex", "gex_to_atac"]:
+            project = "mm_atac"
+        elif config["data"]["task_type"] in ["adt_to_gex", "gex_to_adt"]:
+            project = "mm_adt"
+        else:
+            raise NotImplementedError()
         pl_logger = WandbLogger(
-            project="mm",
+            project=project,
             log_model=False,  # type: ignore
             config=config,
             tags=[config["data"]["task_type"]],
             config_exclude_keys=["wandb"],
         )
-        pl_logger.experiment.define_metric(name="test_top0.05", summary="max")
-        pl_logger.experiment.define_metric(name="test_top0.01", summary="max")
-        pl_logger.experiment.define_metric(name="test_top0.1", summary="max")
+        pl_logger.experiment.define_metric(name="test_top1", summary="max")
+        pl_logger.experiment.define_metric(name="test_top5", summary="max")
+        pl_logger.experiment.define_metric(name="test_top10", summary="max")
     return pl_logger
 
 
@@ -227,7 +231,7 @@ def get_callbacks(preprocessed_data: dict, model_config: dict, logger=None):
         preprocessed_data["small_train_dataloader"],
         model_config["predict_temperature"],
         "train",
-        log_top=[0.05, 0.01],
+        log_top=[5, 1],
     )
     callbacks.append(small_train_callback)
 
@@ -236,7 +240,7 @@ def get_callbacks(preprocessed_data: dict, model_config: dict, logger=None):
             preprocessed_data["val_dataloader"],
             model_config["predict_temperature"],
             "val",
-            log_top=[0.05, 0.01],
+            log_top=[5, 1],
         )
         callbacks.append(val_callback)
 
@@ -245,7 +249,7 @@ def get_callbacks(preprocessed_data: dict, model_config: dict, logger=None):
         preprocessed_data["test_dataloader"],
         model_config["predict_temperature"],
         "test",
-        log_top=[0.1, 0.05, 0.01],
+        log_top=[10, 5, 1],
         log_preds=log_preds,
     )
     callbacks.append(test_callback)
@@ -271,7 +275,7 @@ def train(config: dict):
 
     # Preprocess data
     preprocessed_data = preprocessing.preprocess_data(
-        data_config, dataset, mode='train'
+        data_config, dataset, mode="train"
     )
     train_dataloaders = preprocessed_data["train_shuffled_dataloader"]
     model_config = preprocessing.update_model_config(config, preprocessed_data)

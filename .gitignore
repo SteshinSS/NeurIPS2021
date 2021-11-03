@@ -1,5 +1,6 @@
 # do not sync datasets
 data/official
+data/annotation.gtf
 
 # do not sync pipeline output
 pipelines/modality_prediction/*

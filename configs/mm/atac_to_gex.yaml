@@ -1,7 +1,7 @@
 data: 
   task_type: atac_to_gex
   train_batches: [s1d1, s1d2, s2d1, s2d4]
-  test_batches: [s3d6, s3d7]
+  test_batches: [s3d6]
   batch_correct: []
   val_size: 512
   batch_size: 32
@@ -21,8 +21,10 @@ data:
 model:
   first_dim: [1000, 900, 750, 300, 200, 100, 50]
   first_dropout: []
+  first_batchnorm: []
   second_dim: [1000, 900, 750, 300, 200, 100, 50]
   second_dropout: []
+  second_batchnorm: []
   dropout: 0.5
   latent_dim: 30
   activation: leaky_relu

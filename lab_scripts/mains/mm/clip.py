@@ -10,7 +10,7 @@ from torch import nn
 from torch.nn import functional as F
 
 
-def construct_net(dims, activation_name: str, latent_dim: int, dropout_pos, dropout):
+def construct_net(dims, activation_name: str, latent_dim: int, dropout_pos, dropout, batchnorm_pos):
     activation = plugins.get_activation(activation_name)
 
     net = []
@@ -24,6 +24,8 @@ def construct_net(dims, activation_name: str, latent_dim: int, dropout_pos, drop
         net.append((f"{i}_Actiavtion", activation))
         if i in dropout_pos:
             net.append((f"{i}_Dropout", nn.Dropout(dropout)))  # type: ignore
+        if i in batchnorm_pos:
+            net.append((f"{i}_Batchnorm", nn.BatchNorm1d(dims[i+1])))  # type: ignore
     net.append((f"{len(dims) - 1}_Linear", nn.Linear(dims[-1], latent_dim)))
     return nn.Sequential(OrderedDict(net))
 
@@ -37,6 +39,7 @@ class Clip(pl.LightningModule):
             config["latent_dim"],
             config["first_dropout"],
             config["dropout"],
+            config['first_batchnorm'],
         )
         self.second_net = construct_net(
             config["second_dim"],
@@ -44,6 +47,7 @@ class Clip(pl.LightningModule):
             config["latent_dim"],
             config["second_dropout"],
             config["dropout"],
+            config['second_batchnorm'],
         )
         self.lr = config["lr"]
         self.attack = config["attack"]
@@ -171,9 +175,10 @@ class TargetCallback(pl.Callback):
             idx = idx.numpy()
             for top in self.log_top:
                 good = 0
+                frac_top = 0.01 * top
 
                 for i in range(n):
-                    good += i in idx[i][: int(top * n)]
+                    good += i in idx[i][: int(frac_top * n)]
                 self.log(
                     f"{self.prefix}_top{top}", good / n, logger=True, prog_bar=False
                 )
