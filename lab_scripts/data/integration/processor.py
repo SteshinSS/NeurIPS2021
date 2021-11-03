@@ -127,10 +127,11 @@ class ATACProcessor(Processor):
         self.window = config["window"]
 
     def fit(self, dataset: ad.AnnData):
+        matrix = self.get_matrix(dataset, fit=True)
         if self.scale:
-            matrix = self.get_matrix(dataset, fit=True)
             self.scaler = StandardScaler()
             self.scaler.fit(matrix)
+        self.features = matrix.shape[1]
         self.fitted = True
 
     def transform(self, dataset: ad.AnnData):

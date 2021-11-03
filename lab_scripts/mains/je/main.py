@@ -24,7 +24,7 @@ def predict_submission(
     input_mod2: ad.AnnData,
     resources_dir: str = "",
 ) -> ad.AnnData:
-    log.info("Start MM prediction...")
+    log.info("Start JE prediction...")
 
     # Load data
     mod1 = utils.get_mod(input_mod1)

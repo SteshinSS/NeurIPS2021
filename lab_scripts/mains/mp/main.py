@@ -75,7 +75,7 @@ def predict(
         "test_mod1": input_test_mod1,
     }
     preprocessed_data = preprocessing.preprocess_data(
-        data_config, dataset, mode="test"
+        data_config, dataset, mode="test", resources_dir=resources_dir
     )
 
     test_dataloader = preprocessed_data["test_dataloader"]

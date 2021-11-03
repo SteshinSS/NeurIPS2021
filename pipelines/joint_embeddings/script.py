@@ -17,7 +17,6 @@ sys.path.append(meta["resources_dir"])
 
 # import as usual
 import logging
-import torch
 from lab_scripts.mains.je.main import predict_submission
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger('je')

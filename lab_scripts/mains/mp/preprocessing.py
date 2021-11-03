@@ -213,7 +213,13 @@ def preprocess_train_data(config, dataset):
     return result
 
 
-def preprocess_data(config: dict, dataset, mode=None):
+def preprocess_data(config: dict, dataset, mode=None, resources_dir=None):
+    if resources_dir is not None:
+        global base_config_path
+        base_config_path = resources_dir + base_config_path
+        global base_checkpoint_path
+        base_checkpoint_path = resources_dir + base_checkpoint_path
+
     if mode == "test":
         return preprocess_test_data(config, dataset)
     elif mode == "tune":

@@ -18,10 +18,14 @@ sys.path.append(meta["resources_dir"])
 
 # import as usual
 import logging
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger('mm')
+log.info('Importing pl...')
+import pytorch_lightning as pl
+log.info('Done.')
 import anndata as ad
 from lab_scripts.mains import mm as main
 
-logging.basicConfig(level=logging.INFO)
 print(meta["resources_dir"])
 
 input_train_mod1 = ad.read_h5ad(par['input_train_mod1'])

@@ -18,10 +18,11 @@ sys.path.append(meta["resources_dir"])
 
 # import as usual
 import logging
+logging.basicConfig(level=logging.INFO)
 import anndata as ad
+
 from lab_scripts.mains.mp import main
 
-logging.basicConfig(level=logging.INFO)
 print(meta["resources_dir"])
 
 input_train_mod1 = ad.read_h5ad(par["input_train_mod1"])

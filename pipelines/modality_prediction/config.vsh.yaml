@@ -62,8 +62,8 @@ platforms:
   # executable which uses docker in the back end to run your method.
   - type: docker
     # you need to specify a base image that contains at least bash and python
-    image: pytorch/pytorch:1.9.0-cuda11.1-cudnn8-runtime
-    run_args: [ "--gpus all" ]
+    image: pytorch/pytorch:1.10.0-cuda11.3-cudnn8-runtime
+    run_args: [ "--gpus all"]
     # You can specify additional dependencies with 'setup'. 
     # See https://viash.io/docs/reference_config/platform-docker/#setup-list
     # for more information on how to add more dependencies.
@@ -80,11 +80,13 @@ platforms:
           - anndata
           - scanpy
           - pyyaml
-          - torch
           - pytorch-lightning
+          - plotly
+          - pyro-ppl
+          - einops
 
   # By specifying a 'nextflow', viash will also build a viash module
   # which uses the docker container built above to also be able to 
   # run your method as part of a nextflow pipeline.
   - type: nextflow
-    labels: [ midmem, hightime, highcpu, gpu]
+    labels: [ midmem, hightime, highcpu, gpu ]
