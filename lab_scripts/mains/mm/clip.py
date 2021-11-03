@@ -54,6 +54,9 @@ class Clip(pl.LightningModule):
         self.sustain = config["sustain"]
         self.release = config["release"]
         self.train_per_batch = config["train_per_batch"]
+        self.enter_dropout = config["enter_dropout"]
+        if self.enter_dropout > 0.0:
+            self.dropout = nn.Dropout(self.enter_dropout)
         if config["train_temperature"] == -1:
             self.learn_temperature = True
             self.temperature = nn.Parameter(torch.zeros([]))
@@ -75,6 +78,9 @@ class Clip(pl.LightningModule):
 
     def training_step(self, batch, batch_n):
         first, second, batch_idx = batch
+        if self.enter_dropout > 0.0:
+            first = self.dropout(first)
+            second = self.dropout(second)
         first_embed, second_embed = self(first, second)
         if self.train_per_batch:
             loss = 0.0
@@ -158,7 +164,7 @@ class TargetCallback(pl.Callback):
         final_predictions = torch.softmax(similiarity, dim=1)
         init = torch.eye(n)
         score = mm.calculate_target(final_predictions.numpy(), init.numpy())
-        pl_module.log(self.prefix, score, logger=True, prog_bar=True)
+        pl_module.log(self.prefix, score, logger=True, prog_bar=False)
 
         if self.log_preds:
             confidence = final_predictions[:5].flatten().numpy()
@@ -179,6 +185,7 @@ class TargetCallback(pl.Callback):
 
                 for i in range(n):
                     good += i in idx[i][: int(frac_top * n)]
+                prog_bar = top == 5
                 self.log(
-                    f"{self.prefix}_top{top}", good / n, logger=True, prog_bar=False
+                    f"{self.prefix}_top{top}", good / n, logger=True, prog_bar=prog_bar
                 )

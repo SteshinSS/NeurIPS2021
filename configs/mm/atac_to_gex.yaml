@@ -19,14 +19,15 @@ data:
 
 
 model:
-  first_dim: [1000, 900, 750, 300, 200, 100, 50]
+  first_dim: [3000, 1000, 750, 300, 200, 100, 50]
   first_dropout: []
-  first_batchnorm: []
-  second_dim: [1000, 900, 750, 300, 200, 100, 50]
+  first_batchnorm: [1, 2, 3, 4, 5]
+  second_dim: [3000, 1000, 750, 300, 200, 100, 50]
   second_dropout: []
-  second_batchnorm: []
-  dropout: 0.5
-  latent_dim: 30
+  second_batchnorm: [1, 2, 3, 4, 5]
+  dropout: 0.0
+  enter_dropout: 0.0
+  latent_dim: 50
   activation: leaky_relu
   lr: 0.001
   attack: 10
@@ -36,4 +37,4 @@ model:
   train_per_batch: False
   train_temperature: 3.0
   predict_temperature: 9.0
-  l2_lambda: 0.0
+  l2_lambda: 0.0001
