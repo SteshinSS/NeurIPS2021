@@ -180,12 +180,12 @@ class ATACProcessor(Processor):
         return np.concatenate(windows, axis=1)
 
     def _create_gene_activity_matrix(self, dataset: ad.AnnData):
-        X = dataset.X.toarray()
+        X = dataset.X
         gene_activity = np.zeros((dataset.shape[0], self.total_genes.shape[0]))
         for i, region in enumerate(dataset.var.index):
             if region in self.region_to_id.keys():
                 gene_id = self.region_to_id[region]
-                gene_activity[:, gene_id] += X[:, i].flatten()
+                gene_activity[:, gene_id] += X[:, i].toarray().flatten()
         return gene_activity
 
     def _prepare_gene_mapping(self):

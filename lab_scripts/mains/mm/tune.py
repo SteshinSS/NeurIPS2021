@@ -84,7 +84,7 @@ def tune_one_config(config, preprocessed_data):
 
     trainer = pl.Trainer(
         gpus=1,
-        max_epochs=70,
+        max_epochs=250,
         logger=pl_logger,
         callbacks=callbacks,
         deterministic=True,
