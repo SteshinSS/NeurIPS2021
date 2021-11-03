@@ -21,7 +21,7 @@ def get_logger(config):
         project=project,
         log_model=False,  # type: ignore
         config=config,
-        tags=[config["data"]["task_type"]],
+        tags=[config["data"]["task_type"], 'tune'],
         config_exclude_keys=["wandb"],
     )
     pl_logger.experiment.define_metric(name="test_top1", summary="max")
@@ -64,7 +64,7 @@ def get_callbacks(preprocessed_data: dict, model_config: dict, logger=None):
             logging_interval="step",
         )
         callbacks.append(learning_rate_monitor)
-    callbacks.append(EarlyStopping(monitor="test_top5", patience=40, mode="max"))
+    callbacks.append(EarlyStopping(monitor="test_top1", patience=40, mode="max"))
     return callbacks
 
 
@@ -84,7 +84,7 @@ def tune_one_config(config, preprocessed_data):
 
     trainer = pl.Trainer(
         gpus=1,
-        max_epochs=250,
+        max_epochs=150,
         logger=pl_logger,
         callbacks=callbacks,
         deterministic=True,
@@ -92,6 +92,7 @@ def tune_one_config(config, preprocessed_data):
         gradient_clip_val=model_config["gradient_clip"],
     )
     trainer.fit(model, train_dataloaders=train_dataloaders)
+    pl_logger.experiment.finish()
 
 
 def tune_hp(config: dict):
@@ -106,7 +107,7 @@ def tune_hp(config: dict):
         data_config, dataset, mode="train"
     )
     log.info("Data is preprocessed")
-    for i in range(10):
+    for i in range(30):
         print(i)
         new_config = deepcopy(config)
         new_config = update_config(new_config, i)
@@ -115,37 +116,56 @@ def tune_hp(config: dict):
 
 def update_config(config, i):
     model_config = config['model']
-    if i == 1:
-        model_config['first_batchnorm'] = [2]
-        model_config['second_batchnorm'] = [2]
-    elif i == 2:
-        model_config['first_batchnorm'] = [2, 4]
-        model_config['second_batchnorm'] = [2, 4]
-    elif i == 3:
-        model_config['latent_dim'] = 50
-    elif i == 4:
-        model_config['latent_dim'] = 75
-    elif i == 5:
-        model_config['latent_dim'] = 100
-    elif i == 6:
-        model_config['activation'] = 'relu'
-    elif i == 7:
-        model_config['activation'] = 'selu'
-    elif i == 8:
-        model_config['train_temperature'] = 1.0
-    elif i == 9:
-        model_config['train_temperature'] = 2.0
-    elif i == 10:
-        model_config['train_temperature'] = 4.0
-    elif i == 11:
+    mod = i // 10
+    i = i % 10
+    if mod == 0:
         model_config['train_temperature'] = 5.0
-    elif i == 12:
-        model_config['l2_lambda'] = 0.01
-    elif i == 13:
-        model_config['first_dim'] = [5000, 3000, 1000, 500, 300]
-        model_config['second_dim'] = [5000, 3000, 1000, 500, 300]
-    elif i == 14:
-        model_config['first_dim'] = [5000, 1000, 500, 300]
-        model_config['second_dim'] = [5000, 1000, 500, 300]
+    elif mod == 1:
+        model_config['train_temperature'] = 3.0
+    elif mod == 2:
+        model_config['train_temperature'] = 6.5
+    
+    if i == 0:
+        model_config['first_dropout'] = [1]
+        model_config['second_dropout'] = [1]
+        model_config['dropout'] = 0.3
+    elif i == 1:
+        model_config['first_dropout'] = [1, 3]
+        model_config['second_dropout'] = [1, 3]
+        model_config['dropout'] = 0.3
+    elif i == 2:
+        model_config['first_dropout'] = [1]
+        model_config['second_dropout'] = [1]
+        model_config['dropout'] = 0.5
+    elif i == 3:
+        model_config['first_dropout'] = [1, 3]
+        model_config['second_dropout'] = [1, 3]
+        model_config['dropout'] = 0.5
+    elif i == 4:
+        model_config['l2_lambda'] = 0.0005
+    elif i == 5:
+        model_config['l2_lambda'] = 0.0008
+    elif i == 6:
+        model_config['first_dropout'] = [1]
+        model_config['second_dropout'] = [1]
+        model_config['dropout'] = 0.3
+        model_config['l2_lambda'] = 0.0005
+    elif i == 7:
+        model_config['first_dropout'] = [1, 3]
+        model_config['second_dropout'] = [1, 3]
+        model_config['dropout'] = 0.3
+        model_config['l2_lambda'] = 0.0005
+    elif i == 8:
+        model_config['first_dropout'] = [1]
+        model_config['second_dropout'] = [1]
+        model_config['dropout'] = 0.5
+        model_config['l2_lambda'] = 0.0005
+    elif i == 9:
+        model_config['first_dropout'] = [1, 3]
+        model_config['second_dropout'] = [1, 3]
+        model_config['dropout'] = 0.5
+        model_config['l2_lambda'] = 0.0005
+
+
 
     return config
