@@ -84,7 +84,7 @@ def tune_one_config(config, preprocessed_data):
 
     trainer = pl.Trainer(
         gpus=1,
-        max_epochs=250,
+        max_epochs=1,
         logger=pl_logger,
         callbacks=callbacks,
         deterministic=True,
@@ -92,6 +92,7 @@ def tune_one_config(config, preprocessed_data):
         gradient_clip_val=model_config["gradient_clip"],
     )
     trainer.fit(model, train_dataloaders=train_dataloaders)
+    pl_logger.experiment.finish(quiet=True)
 
 
 def tune_hp(config: dict):
@@ -106,7 +107,7 @@ def tune_hp(config: dict):
         data_config, dataset, mode="train"
     )
     log.info("Data is preprocessed")
-    for i in range(10):
+    for i in range(1, 10):
         print(i)
         new_config = deepcopy(config)
         new_config = update_config(new_config, i)
