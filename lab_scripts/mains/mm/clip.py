@@ -207,15 +207,9 @@ class TargetCallback(pl.Callback):
         score = mm.calculate_target(final_predictions.numpy(), init.numpy())
         pl_module.log(self.prefix, score, logger=True, prog_bar=False)
 
-        if self.log_preds:
-            confidence = final_predictions[:5].flatten().numpy()
-            color = np.eye(5, final_predictions.shape[1]).flatten()
-            idx = np.argsort(confidence)[-2000:]
-            color = color[idx]
-            confidence = confidence[idx]
-
-            fig = px.histogram(confidence, nbins=200, color=color)
-            trainer.logger.experiment.log({"confidence": fig})
+        if self.prefix == 'test':
+            fig = px.histogram(temp.numpy(), nbins=20)
+            trainer.logger.experiment.log({"temperature": fig})
 
         if self.log_top:
             (_, idx) = torch.sort(similiarity, descending=True)
