@@ -4,37 +4,37 @@ data:
   test_batches: [s3d6]
   batch_correct: []
   val_size: 512
-  batch_size: 64
+  batch_size: 256
   mod1:
     name: atac
-    scale: True
+    scale: False
     mapping_file: data/region_to_gene.csv
     use_gene_activity: False
-    window: 10
+    window: 5
   mod2:
     name: gex
     use_normalized: True
-    scale: True
+    scale: False
 
 
 
 model:
-  first_dim: [1000, 500, 250, 50]
+  first_dim: [500, 250, 50]
   first_dropout: []
   first_batchnorm: [0, 1, 2, 3, 4]
-  second_dim: [1000, 500, 250, 50]
+  second_dim: [500, 250, 50]
   second_dropout: []
   second_batchnorm: [0, 1, 2, 3, 4]
   dropout: 0.0
-  enter_dropout: 0.7
+  enter_dropout: 0.9
   latent_dim: 25
   activation: leaky_relu
-  lr: 0.001
+  lr: 0.0005
   attack: 10
   sustain: 700
   release: 100
   gradient_clip: 1.0
-  train_per_batch: False
-  train_temperature: 5.0
-  predict_temperature: 9.0
+  train_per_batch: True
+  train_temperature: -1
+  predict_temperature: 2
   l2_lambda: 0.0002

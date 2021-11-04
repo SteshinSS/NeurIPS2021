@@ -4,15 +4,15 @@ data:
   test_batches: [s3d6, s3d7]
   batch_correct: []
   val_size: 512
-  batch_size: 64
+  batch_size: 128
   mod1:
     name: adt
     use_normalized: True
-    scale: True
+    scale: False
   mod2:
     name: gex
     use_normalized: True
-    scale: True
+    scale: False
     gene_path: data/genes.csv
     gene_fraction: 0.1
 
@@ -26,7 +26,7 @@ model:
   second_dropout: []
   second_batchnorm: [0, 1, 2, 3]
   dropout: 0.5
-  enter_dropout: 0.5
+  enter_dropout: 0.8
   latent_dim: 25
   activation: leaky_relu
   lr: 0.001
@@ -37,4 +37,4 @@ model:
   train_per_batch: False
   train_temperature: 5.0
   predict_temperature: 9.0
-  l2_lambda: 0.001
+  l2_lambda: 0.0007

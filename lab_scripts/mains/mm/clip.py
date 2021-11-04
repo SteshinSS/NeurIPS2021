@@ -59,7 +59,22 @@ class Clip(pl.LightningModule):
             self.dropout = nn.Dropout(self.enter_dropout)
         if config["train_temperature"] == -1:
             self.learn_temperature = True
-            self.temperature = nn.Parameter(torch.zeros([]))
+            self.first_to_temperature = construct_net(
+                config['first_dim'],
+                config['activation'],
+                1,
+                config['first_dropout'],
+                config['dropout'],
+                config['first_batchnorm']
+            )
+            self.second_to_temperature = construct_net(
+                config['second_dim'],
+                config['activation'],
+                1,
+                config['second_dropout'],
+                config['dropout'],
+                config['second_batchnorm']
+            )
         else:
             self.learn_temperature = False
             self.register_buffer(
@@ -74,32 +89,54 @@ class Clip(pl.LightningModule):
         second_embed = second_embed / torch.linalg.norm(
             second_embed, dim=1, keepdim=True
         )
-        return first_embed, second_embed
+        if self.learn_temperature:
+            first_temp = self.first_to_temperature(first)
+            second_temp = self.second_to_temperature(second)
+            temp = (first_temp + second_temp) / 2.0
+            temp = torch.sigmoid(temp) * 10.0
+            return first_embed, second_embed, temp
+        else:
+            return first_embed, second_embed
 
     def training_step(self, batch, batch_n):
         first, second, batch_idx = batch
         if self.enter_dropout > 0.0:
             first = self.dropout(first)
             second = self.dropout(second)
-        first_embed, second_embed = self(first, second)
+
+        if self.learn_temperature:
+            first_embed, second_embed, temp = self(first, second)
+        else:
+            first_embed, second_embed = self(first, second)
+
         if self.train_per_batch:
             loss = 0.0
             for b_index in torch.unique(batch_idx):
                 idx = batch_idx == b_index
-                loss += self.calculate_loss(first_embed[idx], second_embed[idx])
+                if self.learn_temperature:
+                    loss += self.calculate_loss(first_embed[idx], second_embed[idx], temp[idx])
+                else:
+                    loss += self.calculate_loss(first_embed[idx], second_embed[idx])
         else:
-            loss = self.calculate_loss(first_embed, second_embed)
+            if self.learn_temperature:
+                loss = self.calculate_loss(first_embed, second_embed, temp)
+            else:
+                loss = self.calculate_loss(first_embed, second_embed)
+                
         self.log("train_loss", loss, logger=True, prog_bar=False)
         if self.learn_temperature:
-            self.log("temp", self.temperature, logger=True, prog_bar=False)
+            self.log("temp", temp.mean(), logger=True, prog_bar=False)
         return loss
 
     def predict_step(self, batch, batch_n):
         first, second, batch_idx = batch
         return self(first, second)
 
-    def calculate_loss(self, first_embed, second_embed):
-        logits = (first_embed @ second_embed.t()) * torch.exp(self.temperature)
+    def calculate_loss(self, first_embed, second_embed, temp=None):
+        if temp is not None:
+            logits = (first_embed @ second_embed.t()) * torch.exp(temp)
+        else:
+            logits = (first_embed @ second_embed.t()) * torch.exp(self.temperature)
         labels = torch.arange(first_embed.shape[0], device=self.device)
         first_loss = F.cross_entropy(logits, labels)
         second_loss = F.cross_entropy(logits.t(), labels)
@@ -140,23 +177,27 @@ class TargetCallback(pl.Callback):
         first_embed = []
         second_embed = []
         batch_idx = []
+        temp = []
         for i, batch in enumerate(self.dataset):
             with torch.no_grad():
                 first, second, idx = batch
-                first_e, second_e = pl_module(first.to(device), second.to(device))
+                preds = pl_module(first.to(device), second.to(device))
+                if pl_module.learn_temperature:
+                    first_e, second_e, temp_e = preds
+                    temp.append(temp_e.cpu())
+                else:
+                    first_e, second_e = preds 
                 first_embed.append(first_e.cpu())
                 second_embed.append(second_e.cpu())
                 batch_idx.append(idx)
         first_embed = torch.cat(first_embed, dim=0)
         second_embed = torch.cat(second_embed, dim=0)
         batch_idx = torch.cat(batch_idx)
+        temp = torch.cat(temp, dim=0)
         n = first_embed.shape[0]
-        if self.temperature == -1:
-            similiarity = (first_embed @ second_embed.t()) * np.exp(
-                pl_module.temperature.detach().cpu()
-            )
-        else:
-            similiarity = (first_embed @ second_embed.t()) * np.exp(self.temperature)
+        similiarity = (first_embed @ second_embed.t()) * np.exp(
+            temp * self.temperature
+        )
         unique_batches = torch.unique(batch_idx)
         for batch in unique_batches:
             idx = batch_idx == batch
