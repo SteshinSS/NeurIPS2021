@@ -19,15 +19,15 @@ data:
 
 
 model:
-  first_dim: [500, 250, 50]
+  first_dim: [200, 100, 100, 40]
   first_dropout: []
   first_batchnorm: [0, 1, 2, 3, 4]
-  second_dim: [500, 250, 50]
+  second_dim: [200, 100, 100, 40]
   second_dropout: []
   second_batchnorm: [0, 1, 2, 3, 4]
   dropout: 0.0
   enter_dropout: 0.9
-  latent_dim: 25
+  latent_dim: 20
   activation: leaky_relu
   lr: 0.0005
   attack: 10
