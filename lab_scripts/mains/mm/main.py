@@ -124,9 +124,8 @@ def evaluate(config: dict):
 
     # Preprocess data
     model_config = config["model"]
-    preprocessed_data = preprocessing.preprocess_data(data_config, dataset, mode="test")
-    raise NotImplementedError()
-    model_config = preprocessing.update_model_config(model_config, preprocessed_data)
+    preprocessed_data = preprocessing.preprocess_data(data_config, dataset, mode="train")
+    model_config = preprocessing.update_model_config(config, preprocessed_data)
     log.info("Data is preprocessed")
 
     # Load model
@@ -181,7 +180,7 @@ class TempModule(nn.Module):
     def __init__(self, embeddings):
         super().__init__()
         self.embeddings = embeddings
-        self.t = nn.Parameter(torch.ones([]) * 10)
+        self.t = nn.Parameter(torch.ones([]) * 1)
 
     def forward(self):
         loss = torch.softmax(self.embeddings * torch.exp(self.t), dim=0)

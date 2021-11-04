@@ -4,7 +4,7 @@ data:
   test_batches: [s3d6]
   batch_correct: []
   val_size: 512
-  batch_size: 32
+  batch_size: 64
   mod1:
     name: atac
     scale: True
