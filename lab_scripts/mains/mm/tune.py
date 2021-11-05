@@ -64,7 +64,7 @@ def get_callbacks(preprocessed_data: dict, model_config: dict, logger=None):
             logging_interval="step",
         )
         callbacks.append(learning_rate_monitor)
-    callbacks.append(EarlyStopping(monitor="test_top1", patience=40, mode="max"))
+    callbacks.append(EarlyStopping(monitor="test_top1", patience=30, mode="max"))
     return callbacks
 
 
@@ -107,7 +107,7 @@ def tune_hp(config: dict):
         data_config, dataset, mode="train"
     )
     log.info("Data is preprocessed")
-    for i in range(30):
+    for i in range(20):
         print(i)
         new_config = deepcopy(config)
         new_config = update_config(new_config, i)
@@ -116,56 +116,31 @@ def tune_hp(config: dict):
 
 def update_config(config, i):
     model_config = config['model']
-    mod = i // 10
-    i = i % 10
-    if mod == 0:
-        model_config['train_temperature'] = 5.0
-    elif mod == 1:
-        model_config['train_temperature'] = 3.0
-    elif mod == 2:
-        model_config['train_temperature'] = 6.5
+    latent = i // 5
+    if latent == 1:
+        model_config['latent_dim'] = 20
+    elif latent == 2:
+        model_config['latent_dim'] = 25
+        model_config['enter_dropout'] = 0.9
+    elif latent == 3:
+        model_config['latent_dim'] = 20
+        model_config['enter_dropout'] = 0.9
+        
+    other = i % 5
+    if other == 0:
+        model_config['first_dim'] =  [100, 100]
+        model_config['second_dim'] = [500, 250, 50]
+    elif other == 1:
+        model_config['first_dim'] =  [100, 100]
+        model_config['second_dim'] = [400, 200, 50]
+    elif other == 2:
+        model_config['first_dim'] =  [100, 100]
+        model_config['second_dim'] = [350, 150, 40]
+    elif other == 3:
+        model_config['first_dim'] =  [100, 75]
+        model_config['second_dim'] = [300, 100, 40]
+    elif other == 4:
+        model_config['first_dim'] =  [75, 50]
+        model_config['second_dim'] = [250, 75, 35]
     
-    if i == 0:
-        model_config['first_dropout'] = [1]
-        model_config['second_dropout'] = [1]
-        model_config['dropout'] = 0.3
-    elif i == 1:
-        model_config['first_dropout'] = [1, 3]
-        model_config['second_dropout'] = [1, 3]
-        model_config['dropout'] = 0.3
-    elif i == 2:
-        model_config['first_dropout'] = [1]
-        model_config['second_dropout'] = [1]
-        model_config['dropout'] = 0.5
-    elif i == 3:
-        model_config['first_dropout'] = [1, 3]
-        model_config['second_dropout'] = [1, 3]
-        model_config['dropout'] = 0.5
-    elif i == 4:
-        model_config['l2_lambda'] = 0.0005
-    elif i == 5:
-        model_config['l2_lambda'] = 0.0008
-    elif i == 6:
-        model_config['first_dropout'] = [1]
-        model_config['second_dropout'] = [1]
-        model_config['dropout'] = 0.3
-        model_config['l2_lambda'] = 0.0005
-    elif i == 7:
-        model_config['first_dropout'] = [1, 3]
-        model_config['second_dropout'] = [1, 3]
-        model_config['dropout'] = 0.3
-        model_config['l2_lambda'] = 0.0005
-    elif i == 8:
-        model_config['first_dropout'] = [1]
-        model_config['second_dropout'] = [1]
-        model_config['dropout'] = 0.5
-        model_config['l2_lambda'] = 0.0005
-    elif i == 9:
-        model_config['first_dropout'] = [1, 3]
-        model_config['second_dropout'] = [1, 3]
-        model_config['dropout'] = 0.5
-        model_config['l2_lambda'] = 0.0005
-
-
-
     return config

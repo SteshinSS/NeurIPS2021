@@ -21,7 +21,7 @@ data:
 model:
   first_dim: [100, 100]
   first_dropout: []
-  first_batchnorm: [0, 1]
+  first_batchnorm: [0, 1, 2, 3]
   second_dim: [500, 250, 50]
   second_dropout: []
   second_batchnorm: [0, 1, 2, 3]
