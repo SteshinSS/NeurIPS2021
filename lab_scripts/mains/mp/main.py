@@ -109,10 +109,10 @@ def get_logger(config):
     pl_logger = None
     if config["wandb"]:
         pl_logger = WandbLogger(
-            project="mp",
+            project="mp_" + config["data"]["task_type"],
             log_model=False,  # type: ignore
             config=config,
-            tags=[config["data"]["task_type"]],
+            tags=[],
             config_exclude_keys=["wandb"],
         )
         pl_logger.experiment.define_metric(name="train_m", summary="min")

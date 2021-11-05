@@ -2,6 +2,7 @@ from collections import OrderedDict
 from itertools import chain
 
 import pandas as pd
+from pandas.core.indexing import convert_missing_indexer
 import plotly.express as px
 import pytorch_lightning as pl
 import torch
@@ -23,7 +24,7 @@ class GaninCritic(pl.LightningModule):
         dims.insert(0, self.feature_dim)
         self.nets = nn.ModuleList(
             [
-                construct_net(dims, config["activation"], [], 0)
+                construct_net(dims, config["activation"], [], 0, [])
                 for _ in range(self.total_batches)
             ]
         )
@@ -58,7 +59,7 @@ def get_critic(name):
         raise NotImplementedError()
 
 
-def construct_net(dims, activation_name: str, dropout_pos, dropout: float):
+def construct_net(dims, activation_name: str, dropout_pos, dropout: float, batchnorm_pos):
     activation = plugins.get_activation(activation_name)
 
     net = []
@@ -70,6 +71,8 @@ def construct_net(dims, activation_name: str, dropout_pos, dropout: float):
             )
         )
         net.append((f"{i}_Actiavtion", activation))
+        if i in batchnorm_pos:
+            net.append((f"{i}_Batchnorm", nn.BatchNorm1d(dims[i+1])))  # type: ignore
         if i in dropout_pos:
             net.append((f"{i}_Dropout", nn.Dropout(dropout)))  # type: ignore
     return nn.Sequential(OrderedDict(net))
@@ -115,6 +118,11 @@ class Predictor(pl.LightningModule):
         else:
             self.batch_weights = None
 
+        self.entry_dropout = config['entry_dropout']
+        if self.entry_dropout > 0.0:
+            self.dropout = nn.Dropout(self.entry_dropout)
+        self.random_scale = config['random_scale']
+        self.log_transform = config['log_transform']
         self.l2_lambda = config["l2_lambda"]
 
         self.use_mmd_loss = config["use_mmd_loss"]
@@ -137,6 +145,7 @@ class Predictor(pl.LightningModule):
             self.activation,
             config["fe_dropout"],
             config["dropout"],
+            config['fe_batchnorm']
         )
         plugins.init(self.feature_extractor, self.activation)
 
@@ -145,6 +154,7 @@ class Predictor(pl.LightningModule):
             self.activation,
             config["regression_dropout"],
             config["dropout"],
+            config['regression_batchnorm']
         )
         plugins.init(self.regression, self.activation)
 
@@ -225,6 +235,7 @@ class Predictor(pl.LightningModule):
 
     def critic_step(self, correction_batches, batch_n):
         cor_first = torch.cat(correction_batches, dim=0)
+        cor_first = self.augment(cor_first)
         features = self.feature_extractor(cor_first)
         critic_preds = self.critic(features)
 
@@ -251,12 +262,25 @@ class Predictor(pl.LightningModule):
 
     def normal_step(self, main_batch):
         first, second, batch_idx = main_batch
+        first = self.augment(first)
         features = self.forward(first)
         predictions = self.regression(features)
         return self.calculate_standard_loss(predictions, second, batch_idx)
+    
+    def augment(self, first):
+        if self.entry_dropout > 0.0:
+            first = self.dropout(first)
+        if self.random_scale > 0.0:
+            scale = torch.rand(first.shape[0], device=self.device) * 2 * self.random_scale
+            scale = scale + (1 - self.random_scale)
+            first = first * scale[:, None]
+        if self.log_transform:
+            first = torch.log(first + 1.0)
+        return first
 
     def correction_step(self, correction_batches):
         cor_first = torch.cat(correction_batches, dim=0)
+        cor_first = self.augment(cor_first)
         cor_features = self.forward(cor_first)
         cor_idx = []
         for i, batch in enumerate(correction_batches):
@@ -332,6 +356,8 @@ class Predictor(pl.LightningModule):
         return critic_loss
 
     def predict_step(self, batch, batch_n):
+        if self.log_transform:
+            batch = torch.log(batch + 1.0)
         features = self.forward(batch.to(self.device))
         prediction = self.regression(features)
         return prediction
