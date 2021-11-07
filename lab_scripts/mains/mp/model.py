@@ -59,22 +59,53 @@ def get_critic(name):
         raise NotImplementedError()
 
 
-def construct_net(dims, activation_name: str, dropout_pos, dropout: float, batchnorm_pos):
+class ResidualBlock(pl.LightningModule):
+    def __init__(self, input_dim, output_dim, activation, use_batchnorm, use_dropout, dropout, type):
+        super().__init__()
+        self.linear = nn.Linear(input_dim, output_dim)
+        self.activation = plugins.get_activation(activation)
+        self.use_batchnorm = use_batchnorm
+        if self.use_batchnorm:
+            self.batchnorm = nn.BatchNorm1d(output_dim)
+        self.use_dropout = use_dropout
+        if self.use_dropout:
+            self.dropout = nn.Dropout(dropout)
+        self.block_type = type
+
+    def forward(self, x):
+        y = self.linear(x)
+        if self.use_batchnorm:
+            y = self.batchnorm(y)
+        if self.use_dropout:
+            y = self.dropout(y)
+        if self.block_type == 'residual':
+            return x + y
+        else:
+            raise NotImplementedError()
+
+
+def construct_net(dims, activation_name: str, dropout_pos, dropout: float, batchnorm_pos, connections=None):
     activation = plugins.get_activation(activation_name)
 
     net = []
     for i in range(len(dims) - 1):
-        net.append(
-            (
-                f"{i}_Linear",
-                nn.Linear(dims[i], dims[i + 1]),
+        if connections is None or connections == 'None' or dims[i] != dims[i+1]:
+            # Standard block without connections
+            net.append(
+                (
+                    f"{i}_Linear",
+                    nn.Linear(dims[i], dims[i + 1]),
+                )
             )
-        )
-        net.append((f"{i}_Actiavtion", activation))
-        if i in batchnorm_pos:
-            net.append((f"{i}_Batchnorm", nn.BatchNorm1d(dims[i+1])))  # type: ignore
-        if i in dropout_pos:
-            net.append((f"{i}_Dropout", nn.Dropout(dropout)))  # type: ignore
+            net.append((f"{i}_Activation", activation))
+            if i in batchnorm_pos:
+                net.append((f"{i}_Batchnorm", nn.BatchNorm1d(dims[i+1])))  # type: ignore
+            if i in dropout_pos:
+                net.append((f"{i}_Dropout", nn.Dropout(dropout)))  # type: ignore
+        elif connections == 'residual':
+            net.append(
+                (f"{i}_ResBlock", ResidualBlock(dims[i], dims[i+1], activation_name, i in batchnorm_pos, i in dropout_pos, dropout, connections))  # type: ignore
+            )
     return nn.Sequential(OrderedDict(net))
 
 
@@ -145,7 +176,8 @@ class Predictor(pl.LightningModule):
             self.activation,
             config["fe_dropout"],
             config["dropout"],
-            config['fe_batchnorm']
+            config['fe_batchnorm'],
+            config['connections'],
         )
         plugins.init(self.feature_extractor, self.activation)
 
@@ -154,7 +186,8 @@ class Predictor(pl.LightningModule):
             self.activation,
             config["regression_dropout"],
             config["dropout"],
-            config['regression_batchnorm']
+            config['regression_batchnorm'],
+            config['connections']
         )
         plugins.init(self.regression, self.activation)
 
