@@ -7,10 +7,10 @@ data:
   batch_size: 32
   mod1:
     name: atac
-    scale: True
+    scale: False
     mapping_file: data/region_to_gene.csv
-    use_gene_activity: True
-    window: 100
+    use_gene_activity: False
+    window: 10
   mod2:
     name: gex
     use_normalized: True
@@ -18,17 +18,23 @@ data:
 
 
 model:
-  feature_extractor_dims: [2000, 1000, 1000]
+  feature_extractor_dims: [4000, 3000, 2000, 2000, 2000, 2000]
   fe_dropout: []
-  regression_dims: [1000, 1000, 2000]
+  fe_batchnorm: []
+  regression_dims: [2000, 3000, 4000]
   regression_dropout: []
-  activation: leaky_relu
-  lr: 0.001
+  regression_batchnorm: []
+  activation: prelu
+  connections: residual
+  lr: 0.00005
   balance_classes: True
   attack: 10
   sustain: 1500
   release: 500
-  gradient_clip: 1.0
+  gradient_clip: 0.0
+  entry_dropout: 0.0
+  random_scale: 0.0
+  log_transform: False
 
   l2_lambda: 0.0
   dropout: 0.5

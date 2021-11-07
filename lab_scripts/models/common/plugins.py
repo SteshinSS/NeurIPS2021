@@ -10,6 +10,8 @@ def get_activation(activation_name: str):
         return nn.SELU()
     elif activation_name == "relu":
         return nn.ReLU()
+    elif activation_name == 'prelu':
+        return nn.PReLU()
 
 
 def selu_init(layer):
