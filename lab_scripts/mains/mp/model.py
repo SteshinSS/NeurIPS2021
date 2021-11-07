@@ -178,6 +178,13 @@ class Predictor(pl.LightningModule):
             )
         self.current_batch = -1
 
+        if 'prediction_weights' in config:
+            self.register_buffer("prediction_weights", torch.tensor(config["prediction_weights"]))
+            self.use_prediction_weights = True
+        else:
+            self.use_prediction_weights = False
+
+
     def forward(self, x):
         if self.use_vi_dropout:
             x = self.vi_dropout(x)
@@ -291,7 +298,10 @@ class Predictor(pl.LightningModule):
     def calculate_standard_loss(self, source_predictions, source_second, source_idx):
         weights = self.calculate_weights(source_idx)
         mse_loss = F.mse_loss(source_predictions, source_second, reduction="none")
-        loss = (torch.unsqueeze(weights, dim=-1) * mse_loss).mean()
+        loss = torch.unsqueeze(weights, dim=-1) * mse_loss
+        if self.use_prediction_weights:
+            loss =  loss * torch.unsqueeze(self.prediction_weights, dim=0)
+        loss = loss.mean()
 
         if self.use_vi_dropout:
             loss += self.calculate_vi_loss()

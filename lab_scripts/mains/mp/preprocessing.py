@@ -190,6 +190,12 @@ def add_val_dataloader(result, first_processor, second_processor, dataset, batch
         val_dataset, batch_size=batch_size, shuffle=False
     )
 
+def add_prediction_weights(result, config):
+    prediction_weight_path = config['prediction_weights']
+    weights = np.loadtxt(prediction_weight_path, delimiter=",")
+    weights = np.exp(weights * config['prediction_weight_lambda'])
+    result['prediction_weights'] = weights
+
 
 def preprocess_train_data(config, dataset):
     result = {}
@@ -210,6 +216,8 @@ def preprocess_train_data(config, dataset):
         add_val_dataloader(
             result, first_processor, second_processor, dataset, config["batch_size"]
         )
+    if 'prediction_weights' in config:
+        add_prediction_weights(result, config)
     return result
 
 
@@ -241,4 +249,6 @@ def update_model_config(config: dict, preprocessed_data: dict):
     model_config["regression_dims"].append(preprocessed_data["second_features"])
     model_config["total_correction_batches"] = len(config["data"]["batch_correct"])
     model_config["batch_weights"] = preprocessed_data["train_batch_weights"]
+    if 'prediction_weights' in preprocessed_data:
+        model_config['prediction_weights'] = preprocessed_data['prediction_weights']
     return model_config
