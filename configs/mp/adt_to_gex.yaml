@@ -7,6 +7,7 @@ data:
   batch_size: 32
   mod1:
     name: adt
+    use_normalized: False
     scale: False
   mod2:
     name: gex
@@ -18,10 +19,10 @@ data:
 
 
 model:
-  feature_extractor_dims: [100, 100]
+  feature_extractor_dims: [300, 400, 400, 400, 400]
   fe_dropout: []
   fe_batchnorm: []
-  regression_dims: [300, 500, 700, 1000]
+  regression_dims: [500, 1000, 2000, 4000]
   regression_dropout: []
   regression_batchnorm: []
   activation: leaky_relu
@@ -33,7 +34,7 @@ model:
   gradient_clip: 1.0
   entry_dropout: 0.2
   random_scale: 0.0
-  log_transform: False
+  log_transform: True
   
 
   l2_lambda: 0.0

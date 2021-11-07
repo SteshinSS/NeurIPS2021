@@ -4,7 +4,7 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 import torch
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from torch.utils.data import Dataset
 import logging
 
@@ -207,11 +207,12 @@ class ATACProcessor(Processor):
 class ADTProcessor(Processor):
     def __init__(self, config: dict):
         super().__init__(config)
+        self.use_normalized = config['use_normalized']
 
     def fit(self, dataset: ad.AnnData):
-        matrix = dataset.X.toarray().astype(np.float32)
+        matrix = self._get_matrix(dataset)
         if self.scale:
-            self.scaler = StandardScaler()
+            self.scaler = MinMaxScaler()
             self.scaler.fit(matrix)
         self.features = matrix.shape[1]
         self.fitted = True
@@ -221,7 +222,7 @@ class ADTProcessor(Processor):
             raise RuntimeError(
                 "Processor is not fitted yet. Run .fit() on a train dataset"
             )
-        matrix = dataset.X.toarray().astype(np.float32)
+        matrix = self._get_matrix(dataset)
         if self.scale:
             matrix = self.scaler.transform(matrix)
 
@@ -239,6 +240,13 @@ class ADTProcessor(Processor):
         if self.scale:
             f.scaler = self.scaler
         return f
+    
+    def _get_matrix(self, dataset):
+        if self.use_normalized:
+            return dataset.X.toarray().astype(np.float32)
+        else:
+            return dataset.layers['counts'].toarray().astype(np.float32)
+
 
 
 def get_processor(config: dict):
