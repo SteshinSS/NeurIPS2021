@@ -14,7 +14,7 @@ data:
   mod2:
     name: gex
     use_normalized: True
-    scale: True
+    scale: False
 
 
 model:
