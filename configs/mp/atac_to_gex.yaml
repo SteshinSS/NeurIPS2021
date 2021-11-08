@@ -31,8 +31,8 @@ model:
   attack: 10
   sustain: 1500
   release: 500
-  gradient_clip: 0.0
-  entry_dropout: 0.0
+  gradient_clip: 1.0
+  entry_dropout: 0.7
   random_scale: 0.0
   log_transform: False
 

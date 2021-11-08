@@ -201,7 +201,7 @@ def train(config: dict):
         gpus=1,
         max_epochs=5000,
         logger=pl_logger,
-        callbacks=[],
+        callbacks=callbacks,
         deterministic=True,
         checkpoint_callback=False,
         gradient_clip_val=model_config["gradient_clip"]
