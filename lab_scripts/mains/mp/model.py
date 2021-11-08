@@ -106,7 +106,9 @@ def construct_net(dims, activation_name: str, dropout_pos, dropout: float, batch
             net.append(
                 (f"{i}_ResBlock", ResidualBlock(dims[i], dims[i+1], activation_name, i in batchnorm_pos, i in dropout_pos, dropout, connections))  # type: ignore
             )
-    return nn.Sequential(OrderedDict(net))
+    result = nn.Sequential(OrderedDict(net))
+    plugins.init(result, activation_name)
+    return result
 
 
 class VariationalDropout(pl.LightningModule):
