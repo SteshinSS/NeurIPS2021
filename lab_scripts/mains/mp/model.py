@@ -16,14 +16,14 @@ from torch.nn import functional as F
 
 
 class BioDropout(pl.LightningModule):
-    def __init__(self, max, elbow):
+    def __init__(self, b, k):
         super().__init__()
-        self.b = elbow / (max - elbow)
-        self.k = self.b * max
+        self.b = b
+        self.k = k
 
     def forward(self, x):
         before_sum = x.sum()
-        p = self.k / (x  + self.b)
+        p = self.k * x + self.b
         rand = torch.rand_like(x)
         is_zeroed = rand < p
         x[is_zeroed] = 0.0
@@ -35,7 +35,7 @@ class BioDropout(pl.LightningModule):
 def get_entry_dropout(config):
     dropout_type = config['type']
     if dropout_type == 'bio':
-        return BioDropout(config['max'], config['elbow'])
+        return BioDropout(config['b'], config['k'])
     elif dropout_type == 'uniform':
         return nn.Dropout(config['p'])
     else:
