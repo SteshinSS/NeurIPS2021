@@ -9,6 +9,7 @@ data:
     name: gex
     use_normalized: False
     scale: False
+    l2_norm: False
     gene_path: data/genes.csv
     gene_fraction: 0.1
   mod2:
@@ -35,11 +36,12 @@ model:
   gradient_clip: 1.0
 
   entry_dropout:
-    type: bio
+    type: uniform
     p: 0.0
-    k: -0.07
-    b: 0.3
+    k: 0
+    b: 0.2
   random_scale: 0.0
+
   log_transform: True
 
   l2_lambda: 0.0

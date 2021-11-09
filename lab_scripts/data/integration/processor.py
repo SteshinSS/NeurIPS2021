@@ -33,6 +33,7 @@ class GEXProcessor(Processor):
         super().__init__(config)
         self.log = logging.getLogger("GEXProcessor")
         self.use_normalized = config["use_normalized"]
+        self.l2_norm = config['l2_norm']
         gene_fraction = config.get("gene_fraction", None)
         gene_path = config.get("gene_path", None)
         if gene_fraction is not None and gene_fraction < 1.0:
@@ -113,7 +114,13 @@ class GEXProcessor(Processor):
             else:
                 return dataset.X.toarray().astype(self.type)
         else:
-            return dataset.layers["counts"].toarray().astype(self.type)
+            X = dataset.layers["counts"].toarray().astype(self.type)
+            if self.l2_norm:
+                sums = X.sum(axis=1)
+                coef = 10000 / sums
+                return X * coef[:, None]
+            else:
+                return X
 
 
 class ATACProcessor(Processor):
