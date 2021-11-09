@@ -15,6 +15,31 @@ from torch.distributions.uniform import Uniform
 from torch.nn import functional as F
 
 
+class BioDropout(pl.LightningModule):
+    def __init__(self, max_dropout, elbow):
+        super().__init__()
+        self.b = elbow / (max_dropout - elbow)
+        self.k = self.b * max_dropout
+
+    def forward(self, x):
+        p = self.k / (x + self.b)
+        rand = torch.rand_like(x)
+        is_zeroed = rand < p
+        x[is_zeroed] = 0.0
+        return x
+
+
+def get_entry_dropout(config):
+    dropout_type = config['type']
+    if dropout_type == 'bio':
+        return BioDropout(config['max'], config['elbow'])
+    elif dropout_type == 'uniform':
+        return nn.Dropout(config['p'])
+    else:
+        raise NotImplementedError()
+
+
+
 class GaninCritic(pl.LightningModule):
     def __init__(self, config: dict):
         super().__init__()
@@ -151,9 +176,7 @@ class Predictor(pl.LightningModule):
         else:
             self.batch_weights = None
 
-        self.entry_dropout = config['entry_dropout']
-        if self.entry_dropout > 0.0:
-            self.dropout = nn.Dropout(self.entry_dropout)
+        self.dropout = get_entry_dropout(config['entry_dropout'])
         self.random_scale = config['random_scale']
         self.log_transform = config['log_transform']
         self.l2_lambda = config["l2_lambda"]
@@ -310,14 +333,14 @@ class Predictor(pl.LightningModule):
         return self.calculate_standard_loss(predictions, second, batch_idx)
     
     def augment(self, first):
-        if self.entry_dropout > 0.0:
-            first = self.dropout(first)
+        if self.log_transform:
+            first = torch.log(first + 1.0)
+        first = self.dropout(first)
         if self.random_scale > 0.0:
             scale = torch.rand(first.shape[0], device=self.device) * 2 * self.random_scale
             scale = scale + (1 - self.random_scale)
             first = first * scale[:, None]
-        if self.log_transform:
-            first = torch.log(first + 1.0)
+
         return first
 
     def correction_step(self, correction_batches):
