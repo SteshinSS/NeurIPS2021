@@ -7,7 +7,7 @@ data:
   batch_size: 32
   mod1:
     name: gex
-    use_normalized: True
+    use_normalized: False
     scale: False
     gene_path: data/genes.csv
     gene_fraction: 0.1
@@ -15,6 +15,7 @@ data:
     name: adt
     use_normalized: True
     scale: False
+  mixup: 0.5
 
 
 model:
@@ -34,12 +35,12 @@ model:
   gradient_clip: 1.0
 
   entry_dropout:
-    type: bio
-    p: 0.5
+    type: uniform
+    p: 0.0
     max: 0.7
     elbow: 0.1
   random_scale: 0.0
-  log_transform: False
+  log_transform: True
 
   l2_lambda: 0.0
   dropout: 0.5

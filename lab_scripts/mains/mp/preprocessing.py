@@ -108,7 +108,7 @@ def preprocess_test_data(config, dataset):
 
 
 def add_train_dataloader(
-    result, first_processor, second_processor, dataset, batch_size
+    result, first_processor, second_processor, dataset, batch_size, mixup
 ):
     first_X = first_processor.transform(dataset["train_mod1"])
     result["first_features"] = first_X.shape[1]
@@ -118,7 +118,7 @@ def add_train_dataloader(
     )
     result["second_features"] = second_X.shape[1]
     batch_idx = get_batch_idx(dataset["train_mod1"])
-    train_dataset = TwoOmicsDataset(first_X, second_X, batch_idx)
+    train_dataset = TwoOmicsDataset(first_X, second_X, batch_idx, mixup=mixup)
     result["train_shuffled_dataloader"] = DataLoader(
         train_dataset,
         batch_size=batch_size,
@@ -206,7 +206,7 @@ def preprocess_train_data(config, dataset):
         config["mod2"], dataset["train_mod2"], config["task_type"]
     )
     add_train_dataloader(
-        result, first_processor, second_processor, dataset, config["batch_size"]
+        result, first_processor, second_processor, dataset, config["batch_size"], config['mixup']
     )
     add_test_dataloader(
         result, first_processor, second_processor, dataset, config["batch_size"]

@@ -274,20 +274,34 @@ class OneOmicDataset(Dataset):
 
 
 class TwoOmicsDataset(Dataset):
-    def __init__(self, first: torch.Tensor, second: torch.Tensor, batch_idx=None):
+    def __init__(self, first: torch.Tensor, second: torch.Tensor, batch_idx=None, mixup=None):
         super().__init__()
         self.first = first
         self.second = second
         self.batch_idx = batch_idx
+        self.mixup = mixup
 
     def __len__(self):
         return self.first.shape[0]
 
     def __getitem__(self, idx):
-        if self.batch_idx is not None:
-            return self.first[idx], self.second[idx], self.batch_idx[idx]
+        if not self.mixup:
+            if self.batch_idx is not None:
+                return self.first[idx], self.second[idx], self.batch_idx[idx]
+            else:
+                return self.first[idx], self.second[idx]
         else:
-            return self.first[idx], self.second[idx]
+            return self._get_mixup(idx)
+    
+    def _get_mixup(self, idx):
+        mixup_l = torch.rand([1]) * self.mixup
+        other_idx = torch.randint(low=0, high=len(self), size=[1]).item()
+        first = self.first[idx] * (1.0 - mixup_l) + self.first[other_idx] * mixup_l
+        second = self.second[idx] * (1.0 - mixup_l) + self.second[other_idx] * mixup_l
+        if self.batch_idx is not None:
+            return first, second, self.batch_idx[idx]
+        else:
+            return first, second
 
     def to(self, device):
         self.first = self.first.to(device)
