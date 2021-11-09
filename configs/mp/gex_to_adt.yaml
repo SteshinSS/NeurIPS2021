@@ -37,8 +37,8 @@ model:
   entry_dropout:
     type: bio
     p: 0.0
-    k: -0.02
-    b: 0.3
+    max: 0.7
+    elbow: 0.3
   random_scale: 0.0
   log_transform: True
 
