@@ -15,7 +15,7 @@ data:
     name: adt
     use_normalized: True
     scale: False
-  mixup: 0.5
+  mixup: 0.0
 
 
 model:
@@ -25,9 +25,9 @@ model:
   regression_dims: [200, 200]
   regression_dropout: []
   regression_batchnorm: []
-  activation: relu
+  activation: leaky_relu
   connections: None
-  lr: 0.001
+  lr: 0.0001
   balance_classes: True
   attack: 10
   sustain: 1500
@@ -35,10 +35,10 @@ model:
   gradient_clip: 1.0
 
   entry_dropout:
-    type: uniform
+    type: bio
     p: 0.0
-    max: 0.7
-    elbow: 0.1
+    k: -0.02
+    b: 0.3
   random_scale: 0.0
   log_transform: True
 
