@@ -7,14 +7,16 @@ data:
   batch_size: 32
   mod1:
     name: adt
-    use_normalized: True
+    use_normalized: False
     scale: False
   mod2:
     name: gex
     use_normalized: True
-    scale: True
+    scale: False
+    l2_norm: False
   prediction_weights: data/genes.csv
-  prediction_weight_lambda: 1.0
+  prediction_weight_lambda: 0.0
+  mixup: 0.0
 
 
 
@@ -24,18 +26,22 @@ model:
   fe_batchnorm: []
   regression_dims: [500,1000,2000,4000]
   regression_dropout: []
-  regression_batchnorm: [0, 1]
+  regression_batchnorm: []
   connections: None
   activation: leaky_relu
-  lr: 0.001
+  lr: 0.0001
   balance_classes: True
   attack: 10
   sustain: 1500
   release: 500
   gradient_clip: 1.0
-  entry_dropout: 0.2
+  entry_dropout:
+    type: uniform
+    p: 0.0
+    k: -0.07
+    b: 0.4
   random_scale: 0.0
-  log_transform: False
+  log_transform: True
   
 
   l2_lambda: 0.0

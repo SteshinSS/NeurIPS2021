@@ -114,7 +114,7 @@ def add_train_dataloader(
     result["first_features"] = first_X.shape[1]
     second_X = second_processor.transform(dataset["train_mod2"])
     result["second_train_inverse"] = second_processor.get_inverse_transform(
-        dataset["test_mod2"]
+        dataset["train_mod2"]
     )
     result["second_features"] = second_X.shape[1]
     batch_idx = get_batch_idx(dataset["train_mod1"])
@@ -145,6 +145,7 @@ def add_train_dataloader(
         shuffle=False,
     )
     result["small_idx"] = small_idx
+    result['small_train_inverse'] = second_processor.get_inverse_transform(dataset['train_mod2'][small_idx])
 
 
 def add_correction_dataloaders(result, dataset, first_processor, config):

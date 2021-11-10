@@ -126,7 +126,7 @@ def get_callbacks(
     small_idx = preprocessed_data["small_idx"]
     train_callback = mp_model.TargetCallback(
         preprocessed_data["small_train_dataloader"],
-        preprocessed_data["second_train_inverse"],
+        preprocessed_data["small_train_inverse"],
         dataset["train_mod2"][small_idx],
         prefix="train",
     )
