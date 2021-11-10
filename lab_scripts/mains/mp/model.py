@@ -22,14 +22,14 @@ class BioDropout(pl.LightningModule):
         self.k = k
 
     def forward(self, x):
-        sums = x.sum(axis=1)
+        sum_before = x.sum()
         p = self.k * x + self.b
         rand = torch.rand_like(x)
         is_zeroed = rand < p
         x[is_zeroed] = 0.0
-        new_sums = x.sum(axis=1)
-        coef = sums / new_sums
-        return x * coef[:, None] 
+        sum_after = x.sum()
+        coef = sum_before / sum_after
+        return x * coef
 
 
 def get_entry_dropout(config):
