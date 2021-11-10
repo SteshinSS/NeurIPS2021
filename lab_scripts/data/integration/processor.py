@@ -215,6 +215,7 @@ class ADTProcessor(Processor):
     def __init__(self, config: dict):
         super().__init__(config)
         self.use_normalized = config['use_normalized']
+        self.l2_norm = config['l2_norm']
 
     def fit(self, dataset: ad.AnnData):
         matrix = self._get_matrix(dataset)
@@ -252,7 +253,12 @@ class ADTProcessor(Processor):
         if self.use_normalized:
             return dataset.X.toarray().astype(np.float32)
         else:
-            return dataset.layers['counts'].toarray().astype(np.float32)
+            X = dataset.layers['counts'].toarray().astype(np.float32)
+            if self.l2_norm:
+                sums = X.sum(axis=1)
+                return X / sums[:, None]
+            else:
+                return X
 
 
 
