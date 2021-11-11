@@ -17,7 +17,7 @@ data:
     l2_norm: False
   prediction_weights: data/genes.csv
   prediction_weight_lambda: 0.0
-  mixup: 0.0
+  mixup: 1.0
 
 
 
@@ -25,9 +25,9 @@ model:
   feature_extractor_dims: [300, 500, 500, 500, 500]
   fe_dropout: []
   fe_batchnorm: []
-  regression_dims: [500,1000, 1000, 1000, 2000,4000]
+  regression_dims: [500,1000,1000,1000,2000,4000]
   regression_dropout: []
-  regression_batchnorm: []
+  regression_batchnorm: [0, 1, 2]
   connections: None
   activation: leaky_relu
   lr: 0.0001
