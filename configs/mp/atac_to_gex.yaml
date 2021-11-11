@@ -20,10 +20,10 @@ data:
 
 
 model:
-  feature_extractor_dims: [2000, 1000, 500, 250, 250]
+  feature_extractor_dims: [2000, 2000, 1000, 1000, 500, 250, 250]
   fe_dropout: []
   fe_batchnorm: []
-  regression_dims: [2000, 2000]
+  regression_dims: [2000, 2000, 3000, 4000]
   regression_dropout: []
   regression_batchnorm: []
   concat_input: True
@@ -36,8 +36,8 @@ model:
   release: 500
   gradient_clip: 1.0
   entry_dropout:
-    type: uniform
-    p: 0.0
+    type: stupid
+    p: 0.6
     k: -0.07
     b: 0.4
   random_scale: 0.0

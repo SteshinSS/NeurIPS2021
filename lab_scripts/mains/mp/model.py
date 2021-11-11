@@ -31,6 +31,17 @@ class BioDropout(pl.LightningModule):
         coef = sum_before / sum_after
         return x * coef
 
+class StupidDropout(pl.LightningModule):
+    def __init__(self, p):
+        super().__init__()
+        self.p = p
+    
+    def forward(self, x):
+        rand = torch.rand_like(x)
+        is_zeroed = rand < self.p
+        x[is_zeroed] = 0.0
+        return x
+
 
 def get_entry_dropout(config):
     dropout_type = config['type']
@@ -38,6 +49,8 @@ def get_entry_dropout(config):
         return BioDropout(config['b'], config['k'])
     elif dropout_type == 'uniform':
         return nn.Dropout(config['p'])
+    elif dropout_type == 'stupid':
+        return StupidDropout(config['p'])
     else:
         raise NotImplementedError()
 
