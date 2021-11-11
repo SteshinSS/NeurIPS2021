@@ -244,8 +244,12 @@ def update_model_config(config: dict, preprocessed_data: dict):
     model_config["feature_extractor_dims"].insert(
         0, preprocessed_data["first_features"]
     )
+    if model_config['concat_input']:
+        regression_input_dim = model_config['feature_extractor_dims'][-1] + preprocessed_data['first_features']
+    else:
+        regression_input_dim = model_config['feature_extractor_dims'][-1]
     model_config["regression_dims"].insert(
-        0, model_config["feature_extractor_dims"][-1]
+        0, regression_input_dim
     )
     model_config["regression_dims"].append(preprocessed_data["second_features"])
     model_config["total_correction_batches"] = len(config["data"]["batch_correct"])

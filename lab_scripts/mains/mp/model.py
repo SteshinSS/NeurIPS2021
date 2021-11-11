@@ -218,6 +218,7 @@ class Predictor(pl.LightningModule):
             config['connections']
         )
         plugins.init(self.regression, self.activation)
+        self.concat_input = config['concat_input']
 
         self.main_parameters = chain(
             self.feature_extractor.parameters(), self.regression.parameters()
@@ -250,7 +251,7 @@ class Predictor(pl.LightningModule):
         if self.use_vi_dropout:
             x = self.vi_dropout(x)
         features = self.feature_extractor(x)
-        return features
+        return torch.cat([features, x], dim=1)
 
     def calculate_weights(self, batch_idx):
         if self.balance_classes:
