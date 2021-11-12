@@ -16,14 +16,14 @@ data:
     mapping_file: data/region_to_gene.csv
     use_gene_activity: False
     window: 0
-  mixup: 0.0
+  mixup: 1.0
 
 
 model:
-  feature_extractor_dims: [2000, 2000, 1000, 1000, 500, 250, 250]
+  feature_extractor_dims: [2000,2000,2000,2000,1000,500,750]
   fe_dropout: []
   fe_batchnorm: []
-  regression_dims: [2000, 4000, 5000]
+  regression_dims: [4000, 5000]
   regression_dropout: []
   regression_batchnorm: []
   concat_input: True
@@ -37,7 +37,7 @@ model:
   gradient_clip: 1.0
   entry_dropout:
     type: uniform
-    p: 0.0
+    p: 0.3
     k: -0.07
     b: 0.4
   random_scale: 0.0
