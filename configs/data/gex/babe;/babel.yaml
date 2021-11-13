@@ -1,0 +1,9 @@
+cell_max_counts: 40000
+
+cell_min_counts: 1500
+
+pct_counts_mt: 20
+
+cell_min_genes: 700
+
+gene_min_cells: 20
