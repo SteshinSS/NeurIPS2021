@@ -207,6 +207,9 @@ class TargetCallback(pl.Callback):
         score = mm.calculate_target(final_predictions.numpy(), init.numpy())
         pl_module.log(self.prefix, score, logger=True, prog_bar=False)
 
+        logger = trainer.logger
+        if logger is None:
+            return
         if self.prefix == 'test':
             fig = px.histogram(temp.numpy(), nbins=20)
             trainer.logger.experiment.log({"temperature": fig})

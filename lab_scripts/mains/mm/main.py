@@ -93,7 +93,7 @@ def predict(
     with torch.no_grad():
         for i, batch in enumerate(preprocessed_data["test_dataloader"]):  # type: ignore
             first, second, batch_idx = batch
-            first, second = model(first, second)
+            first, second, _ = model(first, second)
             first_pred.append(first.cpu())
             second_pred.append(second.cpu())
             all_batches.append(batch_idx.cpu())
@@ -142,7 +142,7 @@ def evaluate(config: dict):
         with torch.no_grad():
             for i, batch in enumerate(dataset):  # type: ignore
                 first, second, batch_idx = batch
-                first, second = model(first, second)
+                first, second, _ = model(first, second)
                 first_pred.append(first.cpu())
                 second_pred.append(second.cpu())
                 all_batches.append(batch_idx.cpu())
@@ -215,7 +215,7 @@ def get_logger(config):
             project=project,
             log_model=False,  # type: ignore
             config=config,
-            tags=[config["data"]["task_type"]],
+            tags=[],
             config_exclude_keys=["wandb"],
         )
         pl_logger.experiment.define_metric(name="test_top1", summary="max")

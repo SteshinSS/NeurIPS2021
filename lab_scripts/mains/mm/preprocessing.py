@@ -107,14 +107,14 @@ def preprocess_test_data(config, dataset):
 
 
 def add_train_dataloader(
-    result, first_processor, second_processor, dataset, batch_size
+    result, first_processor, second_processor, dataset, batch_size, mixup
 ):
     first_X = first_processor.transform(dataset["train_mod1"])
     result["first_features"] = first_X.shape[1]
     second_X = second_processor.transform(dataset["train_mod2"])
     result["second_features"] = second_X.shape[1]
     batch_idx = get_batch_idx(dataset["train_mod1"])
-    train_dataset = TwoOmicsDataset(first_X, second_X, batch_idx)
+    train_dataset = TwoOmicsDataset(first_X, second_X, batch_idx, mixup=mixup)
     result["train_shuffled_dataloader"] = DataLoader(
         train_dataset,
         batch_size=batch_size,
@@ -124,8 +124,9 @@ def add_train_dataloader(
     )
     result["train_batch_weights"] = calculate_batch_weights(batch_idx)
 
+    train_nonmixup = TwoOmicsDataset(first_X, second_X, batch_idx, mixup=0.0)
     result["train_unshuffled_dataloader"] = DataLoader(
-        train_dataset,
+        train_nonmixup,
         batch_size=batch_size,
         shuffle=False,
     )
@@ -134,7 +135,7 @@ def add_train_dataloader(
     np.random.shuffle(small_idx)
     small_idx = small_idx[:512]
     result["small_train_dataloader"] = DataLoader(
-        torch.utils.data.Subset(train_dataset, small_idx),
+        torch.utils.data.Subset(train_nonmixup, small_idx),
         batch_size=batch_size,
         shuffle=False,
     )
@@ -177,7 +178,7 @@ def preprocess_train_data(config, dataset):
     dataset["test_mod2"] = dataset["test_mod2"][test_sorted_idx]
 
     add_train_dataloader(
-        result, first_processor, second_processor, dataset, config["batch_size"]
+        result, first_processor, second_processor, dataset, config["batch_size"], config['mixup']
     )
     add_test_dataloader(
         result, first_processor, second_processor, dataset, config["batch_size"]
