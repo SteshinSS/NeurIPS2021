@@ -142,9 +142,13 @@ class JEAutoencoder(pl.LightningModule):
 
     def automatic_step(self, batch, batch_n):
         loss = 0.0
-        train_batch = batch[0]
+        if self.total_correction_batches > 0:
+            train_batch = batch[0]
+            correct_batch = batch[1:]
+        else:
+            train_batch = batch
+            correct_batch = None
         loss += self.target_step(train_batch)
-        correct_batch = batch[1:]
         loss += self.div_step(correct_batch)
         return loss
 
@@ -201,7 +205,7 @@ class JEAutoencoder(pl.LightningModule):
         return critic_loss
 
     def target_step(self, batch):
-        first, second, _ = batch
+        first, second = batch
         embeddings = self(first, second)
         first_reconstruction = self.first_decoder(embeddings)
         second_reconstruction = self.second_decoder(embeddings)
@@ -219,6 +223,8 @@ class JEAutoencoder(pl.LightningModule):
         return loss
 
     def div_step(self, batch):
+        if batch is None:
+            return 0.0
         first_all = []
         second_all = []
         idx = []

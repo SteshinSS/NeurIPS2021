@@ -105,4 +105,9 @@ def calculate_metrics(data: ad.AnnData, solution: ad.AnnData):
 
     log.info('Calculating graph_conn...')
     result['graph_conn'] = graph_conn(data)
+
+    total_sum = 0.0
+    for key, value in result.items():
+        total_sum += value
+    result['average'] = total_sum / 6
     return result

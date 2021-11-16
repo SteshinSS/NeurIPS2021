@@ -123,11 +123,12 @@ def evaluate(config: dict):
 def get_logger(config):
     pl_logger = None
     if config["wandb"]:
+        task_type = config['data']["task_type"]
         pl_logger = WandbLogger(
-            project="je",
+            project="je_" + task_type,
             log_model=False,  # type: ignore
             config=config,
-            tags=[config['data']["task_type"]],
+            tags=[],
             config_exclude_keys=["wandb"],
         )
         # pl_logger.experiment.define_metric(name="test_top0.05", summary="max")
@@ -140,8 +141,8 @@ def get_callbacks(
     callbacks = []
 
     val_callback = TargetCallback(
-        dataset["test_solution"],
-        preprocessed_data["test_dataloader"],
+        dataset["train_solution"],
+        preprocessed_data["train_unshuffled_dataloader"],
         frequency=10,
     )
     callbacks.append(val_callback)
@@ -166,13 +167,15 @@ def train(config: dict):
     log.info("Data is loaded")
 
     # Preprocess data
-    model_config = config["model"]
     preprocessed_data = preprocessing.preprocess_data(
-        data_config, dataset, model_config["batch_size"], is_train=True
+        data_config, dataset
     )
-    model_config = preprocessing.update_model_config(model_config, preprocessed_data)
-    train_dataloaders = [preprocessed_data["train_shuffled_dataloader"]]
-    train_dataloaders.extend(preprocessed_data["correction_dataloaders"])
+    model_config = preprocessing.update_model_config(config, preprocessed_data)
+    if data_config['batch_correct']:
+        train_dataloaders = [preprocessed_data["train_shuffled_dataloader"]]
+        train_dataloaders.extend(preprocessed_data["correction_dataloaders"])
+    else:
+        train_dataloaders = preprocessed_data["train_shuffled_dataloader"]
     log.info("Data is preprocessed")
 
     # Configure training

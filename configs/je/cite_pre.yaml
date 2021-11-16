@@ -2,20 +2,22 @@ data:
   task_type: cite_pre
   train_batches: [s1d1, s1d2, s2d4, s2d1]
   test_batches: [s3d7, s3d6]
-  batch_correct: [s1d1, s1d2, s2d4, s2d1, s3d6, s3d7]
+  batch_correct: []
   val_size: 0
+  batch_size: 32
   mod1:
     name: gex
     use_normalized: True
-    scale: True
-    type: float
+    scale: False
+    l2_norm: False
     gene_path: data/genes.csv
-    gene_fraction: 0.1
+    gene_fraction: 1.0
   mod2:
     name: adt
     use_normalized: True
-    scale: True
-    type: float
+    scale: False
+    l2_norm: False
+  mixup: 0.0
 
 model:
   first_dim: [1000, 1000, 500, 250, 100]
@@ -26,7 +28,6 @@ model:
   attack: 10
   sustain: 3000
   release: 100
-  batch_size: 32
   gradient_clip: 1.0
 
   use_mmd_loss: False
@@ -38,7 +39,7 @@ model:
   use_coral_loss: False
   coral_lambda: 0.0
 
-  use_critic: True
+  use_critic: False
   critic_lambda: 0.03
   critic_dims: [75, 30]
   normal_iterations: 1
