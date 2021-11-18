@@ -131,6 +131,14 @@ class Clip(pl.LightningModule):
 
     def predict_step(self, batch, batch_n):
         first, second, batch_idx = batch
+        if self.first_log_transform:
+            first = torch.log(1.0 + first)
+            first = first / torch.linalg.norm(first, dim=1, keepdim=True)
+        
+        if self.second_log_transform:
+            second = torch.log(1.0 + second)
+            second = second / torch.linalg.norm(second, dim=1, keepdim=True)
+            
         return self(first, second)
 
     def calculate_loss(self, first_embed, second_embed, temp=None):
