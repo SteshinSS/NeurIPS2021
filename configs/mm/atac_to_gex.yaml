@@ -11,13 +11,13 @@ data:
     scale: False
     mapping_file: data/region_to_gene.csv
     use_gene_activity: False
-    window: 5
+    window: 7
   mod2:
     name: gex
     use_normalized: False
     scale: False
     l2_norm: False
-  mixup: 0.0
+  mixup: 0.3
 
 
 

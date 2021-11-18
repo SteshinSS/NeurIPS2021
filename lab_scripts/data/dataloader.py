@@ -2,6 +2,20 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 
+JE_CITE_SOLUTION = "data/official/joint_embedding/openproblems_bmmc_cite_phase1/openproblems_bmmc_cite_phase1.censor_dataset.output_solution.h5ad"
+COMMON_GEX_ADT = "data/official/common/openproblems_bmmc_cite_phase1v2/openproblems_bmmc_cite_phase1v2.manual_formatting.output_rna.h5ad"
+COMMON_GEX_ATAC = "data/official/common/openproblems_bmmc_multiome_phase1v2/openproblems_bmmc_multiome_phase1v2.manual_formatting.output_rna.h5ad"
+COMMON_ADT = "data/official/common/openproblems_bmmc_cite_phase1v2/openproblems_bmmc_cite_phase1v2.manual_formatting.output_mod2.h5ad"
+COMMON_ATAC = "data/official/common/openproblems_bmmc_multiome_phase1v2/openproblems_bmmc_multiome_phase1v2.manual_formatting.output_mod2.h5ad"
+
+
+USE_NEW_DATA = False
+if not USE_NEW_DATA:
+    COMMON_GEX_ADT = "data/official/common_v1/openproblems_bmmc_cite_phase1/openproblems_bmmc_cite_phase1.manual_formatting.output_rna.h5ad"
+    COMMON_ADT = "data/official/common_v1/openproblems_bmmc_cite_phase1/openproblems_bmmc_cite_phase1.manual_formatting.output_mod2.h5ad"
+    COMMON_GEX_ATAC = "data/official/common_v1/openproblems_bmmc_multiome_phase1/openproblems_bmmc_multiome_phase1.manual_formatting.output_rna.h5ad"
+    COMMON_ATAC = "data/official/common_v1/openproblems_bmmc_multiome_phase1/openproblems_bmmc_multiome_phase1.manual_formatting.output_mod2.h5ad"
+
 
 def load_custom_je_data(task_type, train_batches, test_batches, val_size=None):
     if task_type in ["cite_pre", "cite"]:
@@ -98,8 +112,3 @@ def select_batches(dataset, batches):
     return dataset[selected_idx]
 
 
-JE_CITE_SOLUTION = "data/official/joint_embedding/openproblems_bmmc_cite_phase1/openproblems_bmmc_cite_phase1.censor_dataset.output_solution.h5ad"
-COMMON_GEX_ADT = "data/official/common/openproblems_bmmc_cite_phase1v2/openproblems_bmmc_cite_phase1v2.manual_formatting.output_rna.h5ad"
-COMMON_GEX_ATAC = "data/official/common/openproblems_bmmc_multiome_phase1v2/openproblems_bmmc_multiome_phase1v2.manual_formatting.output_rna.h5ad"
-COMMON_ADT = "data/official/common/openproblems_bmmc_cite_phase1v2/openproblems_bmmc_cite_phase1v2.manual_formatting.output_mod2.h5ad"
-COMMON_ATAC = "data/official/common/openproblems_bmmc_multiome_phase1v2/openproblems_bmmc_multiome_phase1v2.manual_formatting.output_mod2.h5ad"
