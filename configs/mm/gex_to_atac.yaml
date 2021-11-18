@@ -1,4 +1,4 @@
-# All Batches: [s1d1, s1d2, s1d3, s2d1, s2d4, s2d5, s3d6, s3d7]
+# All Batches: ['s1d1', 's1d2', 's1d3', 's2d1', 's2d4', 's2d5', 's3d10', 's3d3', 's3d6', 's3d7']
 data: 
   task_type: gex_to_atac
   train_batches: [s1d1, s1d2, s2d1, s2d4]

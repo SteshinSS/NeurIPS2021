@@ -1,8 +1,8 @@
-# All Batches: [s1d1, s1d2, s1d3, s2d1, s2d4, s2d5, s3d6, s3d7]
+# All Batches: ['s1d1', 's1d2', 's1d3', 's2d1', 's2d4', 's2d5', 's3d10', 's3d3', 's3d6', 's3d7']
 data: 
   task_type: atac_to_gex
-  train_batches: [s1d1, s1d2, s2d1, s2d4]
-  test_batches: [s3d6]
+  train_batches: [s1d1, s1d2, s1d3, s2d1, s2d4, s2d5]
+  test_batches: [s3d3, s3d6, s3d7]
   batch_correct: []
   val_size: 512
   batch_size: 256
@@ -14,7 +14,7 @@ data:
     window: 5
   mod2:
     name: gex
-    use_normalized: True
+    use_normalized: False
     scale: False
     l2_norm: False
   mixup: 0.0
@@ -22,15 +22,25 @@ data:
 
 
 model:
-  first_dim: [200, 100, 100, 40]
-  first_dropout: []
-  first_batchnorm: [0, 1, 2, 3, 4]
-  second_dim: [200, 100, 100, 40]
-  second_dropout: []
-  second_batchnorm: [0, 1, 2, 3, 4]
-  dropout: 0.0
-  enter_dropout: 0.9
-  latent_dim: 20
+  first:
+    dim: [200, 100, 100, 40]
+    dropout_pos: []
+    dropout_p: 0.0
+    batchnorm: [0, 1, 2, 3, 4]
+    entry_dropout:
+      type: standard
+      p: 0.7
+    log_transform: False
+  second:
+    dim: [200, 100, 100, 40]
+    dropout_pos: []
+    dropout_p: 0.0
+    batchnorm: [0, 1, 2, 3, 4]
+    entry_dropout:
+      type: standard
+      p: 0.7
+    log_transform: True
+  latent_dim: 25
   activation: leaky_relu
   lr: 0.0005
   attack: 10

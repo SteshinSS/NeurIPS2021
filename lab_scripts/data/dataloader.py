@@ -53,7 +53,6 @@ def load_custom_mp_data(task_type, train_batches, test_batches, val_size=None, d
         second = ad.read_h5ad(COMMON_ATAC)
         if do_filter_regions:
             second = filter_regions(second)
-
     else:
         raise NotImplementedError()
 

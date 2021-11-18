@@ -156,24 +156,23 @@ def evaluate(config: dict):
             for temp in temps:
                 print(f"Temp: {temp}", calculate_metric(embeddings, temp, all_batches))
         else:
-            best_temp = find_best_temperature(embeddings[:512].cuda())
+            best_temp = find_best_temperature(embeddings.cuda())
             print(
                 f"Final metric: ", calculate_metric(embeddings, best_temp, all_batches)
             )
 
-    run_for_dataset(preprocessed_data["train_unshuffled_dataloader"], "Train")
+    run_for_dataset(preprocessed_data["train_unshuffled_dataloader"], "Train", [7.86])
     run_for_dataset(preprocessed_data["test_dataloader"], "Test")
 
 
 def calculate_metric(embeddings, temperature, all_batches):
-    init = torch.eye(embeddings.shape[0])
     final_predictions = embeddings * np.exp(temperature)
     unique_batches = torch.unique(all_batches)
     for batch in unique_batches:
         idx = all_batches == batch
         embeddings[idx][:, ~idx] = -1e6
     final_predictions = torch.softmax(final_predictions, dim=1)
-    return mm.calculate_target(final_predictions.numpy(), init.numpy())
+    return mm.calculate_target(final_predictions)
 
 
 class TempModule(nn.Module):

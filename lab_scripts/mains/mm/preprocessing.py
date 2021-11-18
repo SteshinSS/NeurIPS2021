@@ -209,6 +209,6 @@ def preprocess_data(config: dict, dataset, mode, resources_dir=None):
 
 def update_model_config(config: dict, preprocessed_data: dict):
     model_config = config["model"]
-    model_config["first_dim"].insert(0, preprocessed_data["first_features"])
-    model_config["second_dim"].insert(0, preprocessed_data["second_features"])
+    model_config["first"]['dim'].insert(0, preprocessed_data["first_features"])
+    model_config["second"]['dim'].insert(0, preprocessed_data["second_features"])
     return model_config

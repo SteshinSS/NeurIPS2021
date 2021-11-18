@@ -1,7 +1,7 @@
 # All Batches: [s1d1, s1d2, s1d3, s2d1, s2d4, s2d5, s3d6, s3d7]
 data: 
-  task_type: gex_to_adt
-  train_batches: [s1d1, s1d2, s2d1, s2d4]
+  task_type: adt_to_gex
+  train_batches: [s1d1, s1d2, s1d3, s2d1, s2d4, s2d5]
   test_batches: [s3d6, s3d7]
   batch_correct: []
   val_size: 512
@@ -23,14 +23,24 @@ data:
 
 
 model:
-  first_dim: [500, 250, 50]
-  first_dropout: []
-  first_batchnorm: [0, 1, 2, 3]
-  second_dim: [100, 100]
-  second_dropout: []
-  second_batchnorm: [0, 1, 2, 3]
-  dropout: 0.0
-  enter_dropout: 0.9
+  first:
+    dim: [500, 250, 50]
+    dropout_pos: []
+    dropout_p: 0.0
+    batchnorm: [0, 1, 2, 3]
+    entry_dropout:
+      type: standard
+      p: 0.9
+    log_transform: False
+  second:
+    dim: [100, 100]
+    dropout_pos: []
+    dropout_p: 0.0
+    batchnorm: [0, 1, 2, 3]
+    entry_dropout: 
+      type: standard
+      p: 0.9
+    log_transform: False
   latent_dim: 25
   activation: leaky_relu
   lr: 0.001

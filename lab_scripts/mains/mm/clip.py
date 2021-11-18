@@ -10,9 +10,10 @@ from torch import nn
 from torch.nn import functional as F
 
 
-def construct_net(dims, activation_name: str, latent_dim: int, dropout_pos, dropout, batchnorm_pos):
-    activation = plugins.get_activation(activation_name)
+def construct_net(config, activation, latent_dim):
+    activation = plugins.get_activation(activation)
 
+    dims = config['dim']
     net = []
     for i in range(len(dims) - 1):
         net.append(
@@ -22,59 +23,49 @@ def construct_net(dims, activation_name: str, latent_dim: int, dropout_pos, drop
             )
         )
         net.append((f"{i}_Actiavtion", activation))
-        if i in dropout_pos:
-            net.append((f"{i}_Dropout", nn.Dropout(dropout)))  # type: ignore
-        if i in batchnorm_pos:
+        if i in config['dropout_pos']:
+            net.append((f"{i}_Dropout", nn.Dropout(config['dropout_p'])))  # type: ignore
+        if i in config['batchnorm']:
             net.append((f"{i}_Batchnorm", nn.BatchNorm1d(dims[i+1])))  # type: ignore
     net.append((f"{len(dims) - 1}_Linear", nn.Linear(dims[-1], latent_dim)))
     return nn.Sequential(OrderedDict(net))
 
 
+def get_dropout(dp_config):
+    type = dp_config['type']
+    p = dp_config['p']
+    if type == "standard":
+        return nn.Dropout(p)
+    else:
+        raise NotImplementedError()
+
+
 class Clip(pl.LightningModule):
     def __init__(self, config: dict):
         super().__init__()
-        self.first_net = construct_net(
-            config["first_dim"],
-            config["activation"],
-            config["latent_dim"],
-            config["first_dropout"],
-            config["dropout"],
-            config['first_batchnorm'],
-        )
-        self.second_net = construct_net(
-            config["second_dim"],
-            config["activation"],
-            config["latent_dim"],
-            config["second_dropout"],
-            config["dropout"],
-            config['second_batchnorm'],
-        )
+        activation = config['activation']
+        latent_dim = config['latent_dim']
+
+        first_config = config['first']
+        self.first_net = construct_net(first_config, activation, latent_dim)
+        self.first_dropout = get_dropout(first_config['entry_dropout'])
+        self.first_log_transform = first_config['log_transform']
+
+        second_config = config['second']
+        self.second_net = construct_net(second_config, activation, latent_dim)
+        self.second_dropout = get_dropout(second_config['entry_dropout'])
+        self.second_log_transform = second_config['log_transform']
+
         self.lr = config["lr"]
         self.attack = config["attack"]
         self.sustain = config["sustain"]
         self.release = config["release"]
         self.train_per_batch = config["train_per_batch"]
-        self.enter_dropout = config["enter_dropout"]
-        if self.enter_dropout > 0.0:
-            self.dropout = nn.Dropout(self.enter_dropout)
+
         if config["train_temperature"] == -1:
             self.learn_temperature = True
-            self.first_to_temperature = construct_net(
-                config['first_dim'],
-                config['activation'],
-                1,
-                config['first_dropout'],
-                config['dropout'],
-                config['first_batchnorm']
-            )
-            self.second_to_temperature = construct_net(
-                config['second_dim'],
-                config['activation'],
-                1,
-                config['second_dropout'],
-                config['dropout'],
-                config['second_batchnorm']
-            )
+            self.first_to_temperature = construct_net(first_config, activation, 1)
+            self.second_to_temperature = construct_net(second_config, activation, 1)
         else:
             self.learn_temperature = False
             self.register_buffer(
@@ -97,13 +88,23 @@ class Clip(pl.LightningModule):
             return first_embed, second_embed, temp
         else:
             return first_embed, second_embed
+    
+    def augment(self, first, second):
+        first = self.first_dropout(first)
+        if self.first_log_transform:
+            first = torch.log(1.0 + first)
+            first = first / torch.linalg.norm(first, dim=1, keepdim=True)
+        
+        second = self.second_dropout(second)
+        if self.second_log_transform:
+            second = torch.log(1.0 + second)
+            second = second / torch.linalg.norm(second, dim=1, keepdim=True)
+        
+        return first, second
 
     def training_step(self, batch, batch_n):
         first, second, batch_idx = batch
-        if self.enter_dropout > 0.0:
-            first = self.dropout(first)
-            second = self.dropout(second)
-
+        first, second = self.augment(first, second)
         if self.learn_temperature:
             first_embed, second_embed, temp = self(first, second)
         else:
@@ -203,8 +204,7 @@ class TargetCallback(pl.Callback):
             idx = batch_idx == batch
             similiarity[idx][:, ~idx] = -1e9
         final_predictions = torch.softmax(similiarity, dim=1)
-        init = torch.eye(n)
-        score = mm.calculate_target(final_predictions.numpy(), init.numpy())
+        score = mm.calculate_target(final_predictions)
         pl_module.log(self.prefix, score, logger=True, prog_bar=False)
 
         logger = trainer.logger
