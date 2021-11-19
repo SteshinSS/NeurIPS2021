@@ -1,8 +1,8 @@
 # All Batches: ['s1d1', 's1d2', 's1d3', 's2d1', 's2d4', 's2d5', 's3d10', 's3d3', 's3d6', 's3d7']
 data: 
   task_type: gex_to_atac
-  train_batches: [s1d1, s1d2, s2d1, s2d4]
-  test_batches: [s3d6]
+  train_batches: [s1d1, s1d2, s1d3, s2d1, s2d4, s2d5]
+  test_batches: [s3d3, s3d6, s3d7]
   batch_correct: []
   val_size: 512
   batch_size: 256
@@ -16,21 +16,31 @@ data:
     scale: False
     mapping_file: data/region_to_gene.csv
     use_gene_activity: False
-    window: 5
-  mixup: 0.0
+    window: 7
+  mixup: 0.1
 
 
 
 model:
-  first_dim: [200, 100, 100, 40]
-  first_dropout: []
-  first_batchnorm: [0, 1, 2, 3, 4]
-  second_dim: [200, 100, 100, 40]
-  second_dropout: []
-  second_batchnorm: [0, 1, 2, 3, 4]
-  dropout: 0.0
-  enter_dropout: 0.9
-  latent_dim: 20
+  first:
+    dim: [500, 100, 100, 40]
+    dropout_pos: []
+    dropout_p: 0.0
+    batchnorm: [0, 1, 2, 3, 4]
+    entry_dropout:
+      type: standard
+      p: 0.7
+    log_transform: False
+  second:
+    dim: [1000, 300, 100, 40]
+    dropout_pos: []
+    dropout_p: 0.0
+    batchnorm: [0, 1, 2, 3, 4]
+    entry_dropout:
+      type: standard
+      p: 0.7
+    log_transform: False
+  latent_dim: 15
   activation: leaky_relu
   lr: 0.0005
   attack: 10
@@ -39,5 +49,5 @@ model:
   gradient_clip: 1.0
   train_per_batch: True
   train_temperature: -1
-  predict_temperature: 2
-  l2_lambda: 0.0002
+  predict_temperature: 3.5
+  l2_lambda: 0.0001

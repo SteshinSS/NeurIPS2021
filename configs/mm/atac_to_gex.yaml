@@ -14,16 +14,16 @@ data:
     window: 7
   mod2:
     name: gex
-    use_normalized: False
+    use_normalized: True
     scale: False
     l2_norm: False
-  mixup: 0.3
+  mixup: 0.1
 
 
 
 model:
   first:
-    dim: [200, 100, 100, 40]
+    dim: [1000, 300, 100, 40]
     dropout_pos: []
     dropout_p: 0.0
     batchnorm: [0, 1, 2, 3, 4]
@@ -32,15 +32,15 @@ model:
       p: 0.7
     log_transform: False
   second:
-    dim: [200, 100, 100, 40]
+    dim: [500, 100, 100, 40]
     dropout_pos: []
     dropout_p: 0.0
     batchnorm: [0, 1, 2, 3, 4]
     entry_dropout:
       type: standard
       p: 0.7
-    log_transform: True
-  latent_dim: 25
+    log_transform: False
+  latent_dim: 15
   activation: leaky_relu
   lr: 0.0005
   attack: 10
@@ -49,5 +49,5 @@ model:
   gradient_clip: 1.0
   train_per_batch: True
   train_temperature: -1
-  predict_temperature: 2
-  l2_lambda: 0.0002
+  predict_temperature: 3
+  l2_lambda: 0.0001

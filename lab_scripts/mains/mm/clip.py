@@ -196,6 +196,7 @@ class TargetCallback(pl.Callback):
                     temp.append(temp_e.cpu())
                 else:
                     first_e, second_e = preds 
+                    temp.append(torch.ones((first_e.shape[0], 1)))
                 first_embed.append(first_e.cpu())
                 second_embed.append(second_e.cpu())
                 batch_idx.append(idx)

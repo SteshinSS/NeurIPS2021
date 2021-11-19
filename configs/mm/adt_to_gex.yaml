@@ -50,5 +50,5 @@ model:
   gradient_clip: 1.0
   train_per_batch: True
   train_temperature: -1
-  predict_temperature: 3.0
+  predict_temperature: 2.0
   l2_lambda: 0.0002

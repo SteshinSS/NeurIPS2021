@@ -1,6 +1,6 @@
 # All Batches: [s1d1, s1d2, s1d3, s2d1, s2d4, s2d5, s3d6, s3d7]
 data: 
-  task_type: adt_to_gex
+  task_type: gex_to_adt
   train_batches: [s1d1, s1d2, s2d1, s2d4]
   test_batches: [s3d6, s3d7]
   batch_correct: []
@@ -50,5 +50,5 @@ model:
   gradient_clip: 1.0
   train_per_batch: True
   train_temperature: -1
-  predict_temperature: 3.0
+  predict_temperature: 2.0
   l2_lambda: 0.0002

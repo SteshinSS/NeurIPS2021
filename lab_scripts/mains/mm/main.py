@@ -90,17 +90,21 @@ def predict(
     first_pred = []
     second_pred = []
     all_batches = []
+    temperature = []
     with torch.no_grad():
         for i, batch in enumerate(preprocessed_data["test_dataloader"]):  # type: ignore
             first, second, batch_idx = batch
-            first, second, _ = model(first, second)
+            first, second, temp = model(first, second)
             first_pred.append(first.cpu())
             second_pred.append(second.cpu())
             all_batches.append(batch_idx.cpu())
+            temperature.append(temp.cpu())
     first = torch.cat(first_pred, dim=0)  # type: ignore
     second = torch.cat(second_pred, dim=0)  # type: ignore
     all_batches = torch.cat(all_batches, dim=0)  # type: ignore
+    temperature = torch.cat(temperature, dim=0)
     embeddings = first @ second.t()  # type: ignore
+    embeddings *= temperature
     unique_batches = torch.unique(all_batches)
     for batch in unique_batches:
         idx = all_batches == batch
@@ -116,7 +120,6 @@ def predict(
 
 
 def evaluate(config: dict):
-    torch.cuda.set_device(0)
     # Load data
     data_config = config["data"]
     dataset = dataloader.load_custom_mm_data(
@@ -138,58 +141,66 @@ def evaluate(config: dict):
         "checkpoint_path", base_checkpoint_path + data_config["task_type"] + ".ckpt"
     )
     model = clip.Clip.load_from_checkpoint(checkpoint_path, config=model_config)
+    model.cpu()
     model.eval()
 
-    def run_for_dataset(dataset, prefix, temps=None):
-        first_pred = []
-        second_pred = []
-        all_batches = []
-        with torch.no_grad():
-            for i, batch in enumerate(dataset):  # type: ignore
-                first, second, batch_idx = batch
-                first, second, _ = model(first, second)
-                first_pred.append(first.cpu())
-                second_pred.append(second.cpu())
-                all_batches.append(batch_idx.cpu())
-        first = torch.cat(first_pred, dim=0)  # type: ignore
-        second = torch.cat(second_pred, dim=0)  # type: ignore
-        all_batches = torch.cat(all_batches, dim=0)  # type: ignore
+
+    first_pred = []
+    second_pred = []
+    all_batches = []
+    temperature = []
+    dataset = preprocessed_data["test_dataloader"]
+    with torch.no_grad():
+        for i, batch in enumerate(dataset):  # type: ignore
+            first, second, batch_idx = batch
+            first, second, temp = model(first, second)
+            first_pred.append(first.cpu())
+            second_pred.append(second.cpu())
+            all_batches.append(batch_idx.cpu())
+            temperature.append(temp.cpu())
+    del model
+    first = torch.cat(first_pred, dim=0)  # type: ignore
+    second = torch.cat(second_pred, dim=0)  # type: ignore
+    all_batches = torch.cat(all_batches, dim=0)  # type: ignore
+    temperature = torch.cat(temperature, dim=0)
+    with torch.no_grad():
         embeddings = first @ second.t()  # type: ignore
+        embeddings *= np.exp(temperature)
+        embeddings = embeddings
 
-        print(f"{prefix} metric:")
-        if temps:
-            for temp in temps:
-                print(f"Temp: {temp}", calculate_metric(embeddings, temp, all_batches))
-        else:
-            best_temp = find_best_temperature(embeddings.cuda())
-            print(
-                f"Final metric: ", calculate_metric(embeddings, best_temp, all_batches)
-            )
-
-    run_for_dataset(preprocessed_data["train_unshuffled_dataloader"], "Train", [7.86])
-    run_for_dataset(preprocessed_data["test_dataloader"], "Test")
+    print("Test metric:")
+    temps = [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0]
+    if temps:
+        for temp in temps:
+            print(f"Temp: {temp}", calculate_metric(embeddings, temp, all_batches))
+    else:
+        best_temp = find_best_temperature(embeddings)
+        print(
+            f"Final metric: ", calculate_metric(embeddings, best_temp, all_batches)
+        )
 
 
 def calculate_metric(embeddings, temperature, all_batches):
-    final_predictions = embeddings * np.exp(temperature)
-    unique_batches = torch.unique(all_batches)
-    for batch in unique_batches:
-        idx = all_batches == batch
-        embeddings[idx][:, ~idx] = -1e6
-    final_predictions = torch.softmax(final_predictions, dim=1)
-    (_, best_idx) = torch.sort(final_predictions, descending=True)
-    for i in range(final_predictions.shape[1]):
-        worst_row_idx = best_idx[i][999:]
-        final_predictions[i][worst_row_idx] = 0.0
-    final_predictions /= final_predictions.sum(axis=1)
-    return mm.calculate_target(final_predictions)
+    with torch.no_grad():
+        final_predictions = embeddings * np.exp(temperature)
+        unique_batches = torch.unique(all_batches)
+        for batch in unique_batches:
+            idx = all_batches == batch
+            final_predictions[idx][:, ~idx] = -1e6
+        final_predictions = torch.softmax(final_predictions, dim=1)
+        (_, best_idx) = torch.sort(final_predictions, descending=True)
+        for i in range(final_predictions.shape[1]):
+            worst_row_idx = best_idx[i][999:]
+            final_predictions[i][worst_row_idx] = 0.0
+        final_predictions /= final_predictions.sum(axis=1)
+        return mm.calculate_target(final_predictions)
 
 
 class TempModule(nn.Module):
     def __init__(self, embeddings):
         super().__init__()
-        self.embeddings = embeddings
-        self.t = nn.Parameter(torch.ones([]) * 1)
+        self.embeddings = embeddings.cuda()
+        self.t = nn.Parameter(torch.ones([]) * 0)
 
     def forward(self):
         loss = torch.softmax(self.embeddings * torch.exp(self.t), dim=0)
