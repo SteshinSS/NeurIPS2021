@@ -212,6 +212,11 @@ class TargetCallback(pl.Callback):
             idx = batch_idx == batch
             similiarity[idx][:, ~idx] = -1e9
         final_predictions = torch.softmax(similiarity, dim=1)
+        (_, best_idx) = torch.sort(final_predictions, descending=True)
+        for i in range(final_predictions.shape[1]):
+            worst_row_idx = best_idx[i][999:]
+            final_predictions[i][worst_row_idx] = 0.0
+        final_predictions /= final_predictions.sum(axis=1)
         score = mm.calculate_target(final_predictions)
         pl_module.log(self.prefix, score, logger=True, prog_bar=False)
 

@@ -107,6 +107,11 @@ def predict(
         embeddings[idx][:, ~idx] = -1e9
     final_predictions = embeddings * np.exp(model_config["predict_temperature"])
     final_predictions = torch.softmax(final_predictions, dim=1)
+    (_, best_idx) = torch.sort(final_predictions, descending=True)
+    for i in range(final_predictions.shape[1]):
+        worst_row_idx = best_idx[i][999:]
+        final_predictions[i][worst_row_idx] = 0.0
+    final_predictions /= final_predictions.sum(axis=1)
     return final_predictions.detach().cpu().numpy()
 
 
@@ -172,6 +177,11 @@ def calculate_metric(embeddings, temperature, all_batches):
         idx = all_batches == batch
         embeddings[idx][:, ~idx] = -1e6
     final_predictions = torch.softmax(final_predictions, dim=1)
+    (_, best_idx) = torch.sort(final_predictions, descending=True)
+    for i in range(final_predictions.shape[1]):
+        worst_row_idx = best_idx[i][999:]
+        final_predictions[i][worst_row_idx] = 0.0
+    final_predictions /= final_predictions.sum(axis=1)
     return mm.calculate_target(final_predictions)
 
 
