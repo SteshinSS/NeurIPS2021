@@ -3,23 +3,8 @@ data/official
 data/annotation.gtf
 
 # do not sync pipeline output
-pipelines/modality_prediction/*
-pipelines/modality_matching/*
-pipelines/joint_embeddings/*
-
-# ...but sync scripts
-!pipelines/*/lab_scripts
-!pipelines/*/configs
-!pipelines/*/checkpoints
-!pipelines/*/script.py
-!pipelines/*/config.vsh.yaml
-!pipelines/*/test.py
-!pipelines/*/README.md
-
+pipelines
 #...and basic stuff
-!pipelines/*/bin/*
-!pipelines/*/sample_data/*
-!pipelines/*/scripts/*
 
 __pycache__/
 *.py[cod]

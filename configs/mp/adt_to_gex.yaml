@@ -29,6 +29,7 @@ model:
   regression_dropout: []
   regression_batchnorm: [0, 1, 2]
   connections: None
+  concat_input: False
   activation: leaky_relu
   lr: 0.0001
   balance_classes: True

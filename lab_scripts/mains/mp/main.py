@@ -194,6 +194,7 @@ def train(config: dict):
 
     # Train model
     model = mp_model.Predictor(model_config)
+    print(model)
     if pl_logger:
         pl_logger.watch(model)
 

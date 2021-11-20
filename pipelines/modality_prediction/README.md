@@ -1,110 +1,39 @@
-# Modality Prediction Pipeline
-Это пайплайн создания посылки для задачи Modality Prediction.
+# Predict Modality - Starter Kit for Python Users
 
-## Как начать делать посылки
-Авторы соревнования подготовили для нас пайплайн.
-
-Установка всего пайплайна описана [здесь](https://openproblems.bio/neurips_docs/submission/quickstart/), но вкратце:
-1) Установите [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2-linux.html#cliv2-linux-install).
-2) Установите [Docker](https://docs.docker.com/get-docker/).
-3) Установите [OpenJDK](https://adoptopenjdk.net/?variant=openjdk11&jvmVariant=hotspot). В результате у вас должна работать команда `which java`. Если не работает, добавьте папку bin из установки в [$PATH](https://losst.ru/peremennaya-path-v-linux).
-
-AWS CLI нужен для скачивания датасетов. Docker и OpenJDK нужны для запуска пайплайна авторов.
-
-## Как создать посылку
-1) Замените в `script.py` вызов `main` бейзлайна на желаемый `main`.
-2) Сгенерируйте посылку `submission.zip`:
-    ```bash
-    ./scripts/2_generate_submission.sh
-    ```
-3) Проверьте посылку:
-    ```bash
-    ./scripts/3_evaluate_submission.sh
-    ```
-4) Если все в порядке, остается последний шаг. Нам надо поменять конфиг в посылке, чтобы она заработала на проверяющем сервере. Для этого распакуйте `submission.zip` в отдельную папку, откройте файл `config.vsh.yaml` и найдите строчку `resources`. Уберите перед каждым путем `../../`:
-    ```bash
-    ../../lab_scripts -> lab_scripts
-    ../../configs -> configs
-    ../../checkpoints -> checkpoints
-    ```
-5) Запакуйте изменения:
-    ```bash
-    zip -9 -r -q submission.zip .
-    ```
-6) Посылка готова.
-
-## Что еще можно
-1) Запустить код без компиляции:
-    ```bash
-    python script.py
-    ```
-2) Отправить посылку:
-    - Убедитесь, что это необходимо. В этом соревновании число посылок ограничено.
-    - Смотрите инструкцию на странице соревнования на EvalAI.
-    - Я создавал отдельный conda environment, потому что при установке evalai-cli были странные ошибки.
-
-## Как это работает
-Главный код, который делает предсказания, находится в `script.py`. Он читает входные данные и передает их в функцию `predict_submission`. Функция `predict_submission` принимает четыре аргумента:
-```python
-input_train_mod1 -- train данные первой модальности
-input_train_mod2 -- train данные второй модальности
-input_test_mod1 -- test данные первой модальности
-resources_dir -- путь к папке с `lab_scripts`, `configs` и `checkpoints`. 
-    Если вы запускаете `script.py` вне контейнера, там будет пустая строка, 
-    потому что папки с ресурсами находятся в текущей директории. 
-    Когда `script.py` запускается в контейнере, туда будет 
-    передаваться путь к ресурсам.
+Full documentation for the competition, including much of the information here, can be found online 
+at [openproblems.bio/neurips_docs/](https://openproblems.bio/neurips_docs/). The documentation for 
+Viash is available at [viash.io/docs](https://viash.io/docs).
+​
+## Getting Started
+​
+Check the [Quickstart](https://openproblems.bio/neurips_docs/submission/quickstart/) to create and upload your first submission to EvalAI.
+​
+Check the following links for more information:
+​
+- [Starter kit contents](https://openproblems.bio/neurips_docs/submission/starter_kit_contents/)
+- [Development process](https://openproblems.bio/neurips_docs/submission/development_process/)
+- [Submit to EvalAI](https://eval.ai/web/challenges/challenge-page/1111/submission)
+​
+## Folder Structure
+​
 ```
-Эта функция должна вернуть AnnData объект с предсказаниями второй модальности для наблюдений из `input_test_mod1`. Использовать train-данные необязательно.
-
-Если ваша функция `main` поддерживает такую сигнатуру и использует данные только из папок `checkpoints`, `configs` и `lab_scripts`, создание посылки должно работать. Если создание посылки падает из-за ненайденных пакетов, добавьте пакет в докер (см. *Как добавить пакет в сборку*). Если вам нужна более тонкая настройка, изучите как работает пайплайн, чтобы модифицировать его.
-
-### Общая идея
-Когда вы запускаете скрипт `2_generate_submission.sh`, происходит следующее:
-1) Он запускает компиляцию с помощью [viash](https://viash.io/) на основе файла конфигурации `config.vsh.yaml`.
-2) Viash создает сборку с Docker.
-3) Viash создает сборку с Nextflow.
-4) Скрипт скачивает датасеты в `output/datasets`, если там их еще нет.
-5) Скрипт использует сборку с Nextflow для того, чтобы сделать предсказания и сохранить их в `output/predictions`
-6) Сборки и предсказания упаковываются в архив `submission.zip`
-
-### Тонкости
-- В конфиге `config.vsh.yaml` есть раздел `resources`, который указывает включить в сборку скрипт `script.py`, а также папки `lab_scripts`, `checkpoints` и `configs`. В финальной сборке эти ресурсы будут лежать в одной папке.
-- В `script.py` есть блок `VIASH START` `VIASH END`, который будет удален во время сборки, а на его месте будут загружены параметры и аргументы. Так viash передает файлы датасетов для исполнения. Почему же в этом блоке есть код, если он будет удален? Это нужно для запуска `python script.py` без сборки для дебага.
-- В целом, у viash понятная документация, но мы используем недокументируемую фичу. В `script.py` мы используем словарь `meta`, чтобы он видел включенные в сборку ресурсы. 
-- В текущей папке находятся софтлинки на `lab_scripts`, `checkpoints` и `configs`. Это не нужно для сборки (во время сборки viash берет оригинальные папки из корня репозитория), но нужно для дебажного запуска `python script.py`.
-- Если что-то непонятно, читайте в следующем порядке:
-    - [Using StarterKits](https://openproblems.bio/neurips_docs/submission/starter_kits/)
-    - [Viash](https://viash.io/)
-    - `script.py`
-    - `config.vsh.yaml`
-    - `./scripts/*.sh`
-    - [Пайплайн](https://github.com/openproblems-bio/neurips2021_multimodal_viash), который вызывается из внутренних скриптов
-
-## FAQ
-### Как добавить пакет в сборку
-Смотри пример в `config.vsh.yaml` в разделе `platforms`. Там можно указать pip-пакеты и apt-get-пакеты.
-
-### `script.py` работает локально, но сборка не работает
-На это может быть несколько причин. 
-
-Если у вас не получается обратится к какому-нибудь локальному ресурсу (файлу конфигураций или скрипту), убедитесь, что он попадает в сборку. Это указано в `config.vsh.yaml` в разделе `resources`. 
-
-Если ваша сборка не может найти какую-нибудь библиотеку, проверьте, что вы установили этот пакет в сборку (См. "Как добавить пакет в сборку").
-
-### Как отладить работу в контейнере
-Во время выполнения `scripts/2_generate_submission.sh` создается лог nextflow: `.nextflow.log` в текущей директории. Найдите там интересующий процесс и найдите строчку типа: 
-```bash
-status: COMPLETED; exit: 1; error: -; workDir: /home/user/nips/pipelines/modality_prediction/work/70/3a0dc77556d4941cda70e99bb5c20f
+├── LICENSE                                 # MIT License
+├── README.md                               # Some starter information
+├── bin/                                    # Binaries needed to generate a submission
+│   ├── check_format
+│   ├── nextflow
+│   └── viash
+├── config.vsh.yaml                         # Viash configuration file
+├── script.py                               # Script containing your method
+├── sample_data/                            # Small sample datasets for unit testing and debugging
+│   ├── openproblems_bmmc_cite_starter/     # Contains H5AD files for CITE data
+│   └── openproblems_bmmc_multiome_starter/ # Contains H5AD files for multiome data
+├── scripts/                                # Scripts to test, generate, and evaluate a submission
+│   ├── 0_sys_checks.sh                     # Checks that necessary software installed
+│   ├── 1_unit_test.sh                      # Runs the unit tests in test.py
+│   ├── 2_generate_submission.sh            # Generates a submission pkg by running your method on validation data
+│   ├── 3_evaluate_submission.sh            # (Optional) Scores your method locally
+│   └── nextflow.config                     # Configurations for running Nextflow locally
+└── test.py                                 # Default unit tests. Feel free to add more tests, but don't remove any.
 ```
-В папке `workDir` находятся логи и stdout главного скрипта.
 
-### Почему меня не хватает ОЗУ
-При стандартных настройках, nextflow запрашивает 10 гигабайт оперативной памяти, даже если скрипт этого не требует. С этим сталкивался Дима, спросите у него.
-
-### Чем эта папка отличается от авторского quickstart
-Мы стараемся менять содержимое по минимуму, чтобы пайплайн было легко обновить, когда авторы выложат новую версию. Сейчас изменены только:
-- В `config.vsh.yaml` добавлены папки с ресурсами и пакеты для докера
-- Изменена логика `script.py`
-- Измен `test.py` на почти пустой файл.
-- Добавленны симлинки на ресурсы: `lab_scripts`, `configs` и `checkpoints`

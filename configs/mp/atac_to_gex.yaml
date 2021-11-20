@@ -20,24 +20,24 @@ data:
 
 
 model:
-  feature_extractor_dims: [2000, 2000, 1000, 1000, 500, 250, 250]
+  feature_extractor_dims: [5000, 2500, 1000, 500, 500]
   fe_dropout: []
   fe_batchnorm: []
-  regression_dims: [2000, 2000, 3000, 4000]
+  regression_dims: [4000, 7000]
   regression_dropout: []
   regression_batchnorm: []
   concat_input: True
   activation: prelu
   connections: None
-  lr: 0.0001
-  balance_classes: True
+  lr: 0.001
+  balance_classes: False
   attack: 10
   sustain: 1500
   release: 500
   gradient_clip: 1.0
   entry_dropout:
     type: stupid
-    p: 0.6
+    p: 0.0
     k: -0.07
     b: 0.4
   random_scale: 0.0

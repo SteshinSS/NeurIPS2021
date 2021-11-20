@@ -104,6 +104,8 @@ def preprocess_test_data(config, dataset):
     )
     result["second_features"] = second_processor.features
     result["train_batch_weights"] = np.ones((len(config['train_batches'])))
+    if 'prediction_weights' in config:
+        result['prediction_weights'] = [0.0] * second_processor.features
     return result
 
 

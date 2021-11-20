@@ -125,7 +125,7 @@ class ResidualBlock(pl.LightningModule):
             raise NotImplementedError()
 
 
-def construct_net(dims, activation_name: str, dropout_pos, dropout: float, batchnorm_pos, connections=None):
+def construct_net(dims, activation_name: str, dropout_pos, dropout: float, batchnorm_pos, connections=None, last_activation=True):
     activation = plugins.get_activation(activation_name)
 
     net = []
@@ -138,6 +138,8 @@ def construct_net(dims, activation_name: str, dropout_pos, dropout: float, batch
                     nn.Linear(dims[i], dims[i + 1]),
                 )
             )
+            if not last_activation and i == len(dims) - 2:
+                break
             net.append((f"{i}_Activation", activation))
             if i in batchnorm_pos:
                 net.append((f"{i}_Batchnorm", nn.BatchNorm1d(dims[i+1])))  # type: ignore
@@ -228,7 +230,8 @@ class Predictor(pl.LightningModule):
             config["regression_dropout"],
             config["dropout"],
             config['regression_batchnorm'],
-            config['connections']
+            config['connections'],
+            last_activation=False
         )
         plugins.init(self.regression, self.activation)
         self.concat_input = config['concat_input']
@@ -264,7 +267,10 @@ class Predictor(pl.LightningModule):
         if self.use_vi_dropout:
             x = self.vi_dropout(x)
         features = self.feature_extractor(x)
-        return torch.cat([features, x], dim=1)
+        if self.concat_input:
+            return torch.cat([features, x], dim=1)
+        else:
+            return features
 
     def calculate_weights(self, batch_idx):
         if self.balance_classes:

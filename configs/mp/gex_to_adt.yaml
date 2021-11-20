@@ -16,6 +16,7 @@ data:
     name: adt
     use_normalized: True
     scale: False
+    l2_norm: False
   mixup: 1.0
 
 
@@ -28,6 +29,7 @@ model:
   regression_batchnorm: []
   activation: leaky_relu
   connections: None
+  concat_input: False
   lr: 0.0001
   balance_classes: True
   attack: 10
