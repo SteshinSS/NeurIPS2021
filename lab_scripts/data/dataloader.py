@@ -9,7 +9,7 @@ COMMON_ADT = "data/official/common/openproblems_bmmc_cite_phase1v2/openproblems_
 COMMON_ATAC = "data/official/common/openproblems_bmmc_multiome_phase1v2/openproblems_bmmc_multiome_phase1v2.manual_formatting.output_mod2.h5ad"
 
 
-USE_NEW_DATA = False
+USE_NEW_DATA = True
 if not USE_NEW_DATA:
     COMMON_GEX_ADT = "data/official/common_v1/openproblems_bmmc_cite_phase1/openproblems_bmmc_cite_phase1.manual_formatting.output_rna.h5ad"
     COMMON_ADT = "data/official/common_v1/openproblems_bmmc_cite_phase1/openproblems_bmmc_cite_phase1.manual_formatting.output_mod2.h5ad"

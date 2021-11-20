@@ -1,6 +1,6 @@
 data: 
   task_type: adt_to_gex
-  train_batches: [s1d1, s1d2, s2d1, s2d4]
+  train_batches: [s1d1, s1d2, s1d3, s2d1, s2d4, s2d5, s3d1]
   test_batches: [s3d6, s3d7]
   batch_correct: []
   val_size: 512
@@ -44,7 +44,6 @@ model:
     b: 0.4
   random_scale: 0.0
   log_transform: False
-  
 
   l2_lambda: 0.0
   dropout: 0.5
