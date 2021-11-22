@@ -2,7 +2,7 @@ data:
   task_type: adt_to_gex
   train_batches: [s1d1, s1d2, s1d3, s2d1, s2d4, s2d5, s3d1]
   test_batches: [s3d6, s3d7]
-  batch_correct: []
+  batch_correct: [s2d1, s3d1]
   val_size: 512
   batch_size: 32
   mod1:
@@ -24,10 +24,10 @@ data:
 model:
   feature_extractor_dims: [300, 500, 500, 500, 500]
   fe_dropout: []
-  fe_batchnorm: []
+  fe_batchnorm: [0, 2, 4]
   regression_dims: [500,1000,1000,1000,2000,4000]
   regression_dropout: []
-  regression_batchnorm: [0, 1, 2]
+  regression_batchnorm: []
   connections: None
   concat_input: False
   activation: leaky_relu
@@ -39,7 +39,7 @@ model:
   gradient_clip: 2.0
   entry_dropout:
     type: uniform
-    p: 0.25
+    p: 0.3
     k: -0.07
     b: 0.4
   random_scale: 0.0
@@ -48,8 +48,8 @@ model:
   l2_lambda: 0.0
   dropout: 0.5
 
-  use_mmd_loss: False
-  mmd_lambda: 0.5
+  use_mmd_loss: True
+  mmd_lambda: 0.1
 
   use_l2_loss: False
   l2_loss_lambda: 0.01
@@ -61,7 +61,7 @@ model:
   critic_type: ganin
   critic_lambda: 0.01
   critic_gamma: 1.0
-  critic_dims: [300, 300, 100]
+  critic_dims: [300,300,100]
   normal_iterations: 1
   critic_iterations: 1
   critic_lr: 0.001

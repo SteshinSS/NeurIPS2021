@@ -258,4 +258,5 @@ def update_model_config(config: dict, preprocessed_data: dict):
     model_config["batch_weights"] = preprocessed_data["train_batch_weights"]
     if 'prediction_weights' in preprocessed_data:
         model_config['prediction_weights'] = preprocessed_data['prediction_weights']
+    model_config['task_type'] = config['data']['task_type']
     return model_config

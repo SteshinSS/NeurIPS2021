@@ -126,7 +126,9 @@ zip -9 -r -q submission_phase1v2.zip . \
   --exclude=nextflow.config \
   --exclude=output/datasets*/* \
   --exclude=submission*zip \
-  --exclude=bin/*
+  --exclude=bin/* \
+  --exclude=target/docker/checkpoints \
+  --exclude=target/nextflow/checkpoints
 
 # print message
 echo ""

@@ -1,6 +1,6 @@
 data: 
   task_type: gex_to_adt
-  train_batches: [s1d1, s1d2, s2d1, s2d4]
+  train_batches: [s1d1, s1d2, s1d3, s2d1, s2d4, s2d5, s3d1]
   test_batches: [s3d6, s3d7]
   batch_correct: []
   val_size: 512
@@ -21,7 +21,7 @@ data:
 
 
 model:
-  feature_extractor_dims: [1000, 700, 500, 300]
+  feature_extractor_dims: [1000,700,500,300]
   fe_dropout: []
   fe_batchnorm: []
   regression_dims: [200, 200]

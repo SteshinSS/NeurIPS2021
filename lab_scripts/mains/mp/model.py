@@ -125,7 +125,7 @@ class ResidualBlock(pl.LightningModule):
             raise NotImplementedError()
 
 
-def construct_net(dims, activation_name: str, dropout_pos, dropout: float, batchnorm_pos, connections=None, last_activation=True):
+def construct_net(dims, activation_name: str, dropout_pos, dropout: float, batchnorm_pos, connections=None, last_activation=True, task_type=None):
     activation = plugins.get_activation(activation_name)
 
     net = []
@@ -198,6 +198,7 @@ class Predictor(pl.LightningModule):
         self.random_scale = config['random_scale']
         self.log_transform = config['log_transform']
         self.l2_lambda = config["l2_lambda"]
+        self.task_type = config['task_type']
 
         self.use_mmd_loss = config["use_mmd_loss"]
         self.mmd_lambda = config["mmd_lambda"]
@@ -231,7 +232,8 @@ class Predictor(pl.LightningModule):
             config["dropout"],
             config['regression_batchnorm'],
             config['connections'],
-            last_activation=False
+            last_activation=False,
+            task_type=self.task_type,
         )
         plugins.init(self.regression, self.activation)
         self.concat_input = config['concat_input']
