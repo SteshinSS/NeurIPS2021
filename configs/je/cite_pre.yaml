@@ -1,8 +1,8 @@
 data:
   task_type: cite_pre
-  train_batches: [s1d1, s1d2, s2d4, s2d1]
-  test_batches: [s3d7, s3d6]
-  batch_correct: []
+  train_batches: [s1d1, s1d2, s1d3]
+  test_batches: []
+  batch_correct: [s1d1, s1d2, s1d3]
   val_size: 0
   batch_size: 32
   mod1:
@@ -20,9 +20,13 @@ data:
   mixup: 0.0
 
 model:
-  first_dim: [1000, 1000, 500, 250, 100]
-  second_dim: [100, 70, 50]
-  common_dim: [150, 150, 125, 100, 100]
+  first:
+    dim: [1000, 500]
+    dropout: 0.0
+  second:
+    dim: [100, 70, 50]
+    dropout: 0.0
+  common_dim: [150]
   activation: leaky_relu
   lr: 0.001
   attack: 10
@@ -30,8 +34,8 @@ model:
   release: 100
   gradient_clip: 1.0
 
-  use_mmd_loss: False
-  mmd_lambda: 0.1
+  use_mmd_loss: True
+  mmd_lambda: 0.2
 
   use_l2_loss: False
   l2_loss_lambda: 0.0

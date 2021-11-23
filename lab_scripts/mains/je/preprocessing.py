@@ -150,8 +150,9 @@ def preprocess_data(config: dict, dataset, resources_dir=None):
 
 def update_model_config(config: dict, preprocessed_data: dict):
     model_config = config['model']
-    model_config['first_dim'].insert(0, preprocessed_data['first_features'])
-    model_config['second_dim'].insert(0, preprocessed_data['second_features'])
-    model_config['common_dim'].insert(0, model_config['first_dim'][-1] + model_config['second_dim'][-1])
+    
+    model_config['first']['dim'].insert(0, preprocessed_data['first_features'])
+    model_config['second']['dim'].insert(0, preprocessed_data['second_features'])
+    model_config['common_dim'].insert(0, model_config['first']['dim'][-1] + model_config['second']['dim'][-1])
     model_config["total_correction_batches"] = len(config["data"]["batch_correct"])
     return model_config

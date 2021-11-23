@@ -45,17 +45,20 @@ class GaninCritic(pl.LightningModule):
 
 
 class Encoder(pl.LightningModule):
-    def __init__(self, dims, activation_name: str):
+    def __init__(self, config, activation_name: str):
         super().__init__()
-        self.net = construct_net(dims, activation_name)
+        self.dropout = nn.Dropout(config['dropout'])
+        self.net = construct_net(config['dim'], activation_name)
 
     def forward(self, x):
-        return self.net(x)
+        y = self.dropout(x)
+        return self.net(y)
 
 
 class Decoder(pl.LightningModule):
-    def __init__(self, dims, activation_name: str, first_dim):
+    def __init__(self, config, activation_name: str, first_dim):
         super().__init__()
+        dims = config['dim']
         rev_dims = dims[1::][::-1]
         rev_dims.insert(0, first_dim)
         self.net = construct_net(rev_dims, activation_name)
@@ -91,14 +94,14 @@ class JEAutoencoder(pl.LightningModule):
         self.gradient_clip = config['gradient_clip']
         self.total_correction_batches = config["total_correction_batches"]
 
-        self.first_encoder = Encoder(config["first_dim"], config["activation"])
-        self.second_encoder = Encoder(config["second_dim"], config["activation"])
+        self.first_encoder = Encoder(config["first"], config["activation"])
+        self.second_encoder = Encoder(config["second"], config["activation"])
         self.net = construct_net(config["common_dim"], config["activation"])
         self.first_decoder = Decoder(
-            config["first_dim"], config["activation"], config["common_dim"][-1]
+            config["first"], config["activation"], config["common_dim"][-1]
         )
         self.second_decoder = Decoder(
-            config["second_dim"], config["activation"], config["common_dim"][-1]
+            config["second"], config["activation"], config["common_dim"][-1]
         )
 
         self.main_parameters = self.parameters()

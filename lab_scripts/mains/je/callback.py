@@ -25,7 +25,9 @@ class TargetCallback(pl.Callback):
             for i, batch in enumerate(self.dataset):
                 first, second = batch
                 embeddings.append(pl_module(first.to(device), second.to(device)).cpu())
-        embeddings = torch.cat(embeddings, dim=0)
-        prediction = metrics.create_anndata(self.solution, embeddings.numpy())
+        embeddings = torch.cat(embeddings, dim=0).numpy()
+        if self.current_epoch > 30:
+            embeddings = metrics.correct_cell_cycle(embeddings, self.solution)
+        prediction = metrics.create_anndata(self.solution, embeddings)
         all_metrics = metrics.calculate_metrics(prediction, self.solution)
         logger.experiment.log(all_metrics)

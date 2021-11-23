@@ -118,7 +118,7 @@ echo "######################################################################"
 echo "##                      Creating submission zip                     ##"
 echo "######################################################################"
 [ -f submission_phase1v2.zip ] && rm submission_phase1v2.zip
-zip -9 -r -q submission_phase1v2.zip . \
+zip -1 -r -q submission_phase1v2.zip . \
   --exclude=*.git* \
   --exclude=*.nextflow* \
   --exclude=*work* \
@@ -127,8 +127,8 @@ zip -9 -r -q submission_phase1v2.zip . \
   --exclude=output/datasets*/* \
   --exclude=submission*zip \
   --exclude=bin/* \
-  --exclude=target/docker/checkpoints \
-  --exclude=target/nextflow/checkpoints
+  --exclude=target/docker/checkpoints/* \
+  --exclude=target/nextflow/checkpoints/*
 
 # print message
 echo ""

@@ -10,9 +10,38 @@ from scib.metrics import (
    silhouette_batch,
    trajectory_conservation,
 )
+import scib
 from scib.metrics.clustering import opt_louvain
 
 log = logging.getLogger("je")
+
+
+def correct_cell_cycle(embeddings: np.ndarray, input_data: ad.AnnData):
+    scib.preprocessing.score_cell_cycle(input_data, organism='human')
+    dataset_batches = input_data.obs["batch"].astype("string")
+    unique_batches = dataset_batches.unique()
+    for batch in unique_batches:
+        print('Correcting', batch, '...')
+        batch_idx = (dataset_batches == batch).to_list()
+        embeddings[batch_idx] = correct_one_batch(embeddings[batch_idx], input_data[batch_idx])
+    return embeddings
+
+
+def correct_one_batch(embeddings: np.ndarray, input_data: ad.AnnData):
+    g2m_cycle = input_data.obs['G2M_score'].to_numpy()
+    s_cycle = input_data.obs['S_score'].to_numpy()
+    best_cc_score = -1
+    best_embeddings = None
+    for coef in [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9]:
+        print(f'Coefficient {coef}:')
+        corrected_embeddings = embeddings * (1 + coef * g2m_cycle[:, None] + coef * s_cycle[:, None])
+        anndata = create_anndata(input_data, corrected_embeddings)
+        cc_score = cc_cons(anndata, input_data)
+        if cc_score > best_cc_score:
+            best_cc_score = cc_score
+            best_embeddings = corrected_embeddings
+    return best_embeddings
+    
 
 
 def create_anndata(solution: ad.AnnData, embeddings: np.ndarray):
@@ -58,8 +87,10 @@ def cc_cons(data: ad.AnnData, solution: ad.AnnData):
         embed="X_emb",
         recompute_cc=False,
         organism="human",
+        agg_func=None
     )
-    return score
+    print(score)
+    return np.mean(score['score'])
 
 
 def ti_cons(data: ad.AnnData, solution: ad.AnnData):

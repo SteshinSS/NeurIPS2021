@@ -2,7 +2,7 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 
-JE_CITE_SOLUTION = "data/official/joint_embedding/openproblems_bmmc_cite_phase1/openproblems_bmmc_cite_phase1.censor_dataset.output_solution.h5ad"
+JE_CITE_SOLUTION = "data/official/joint_embedding/openproblems_bmmc_cite_phase2/openproblems_bmmc_cite_phase2.censor_dataset.output_solution.h5ad"
 COMMON_GEX_ADT = "data/official/common/openproblems_bmmc_cite_phase1v2/openproblems_bmmc_cite_phase1v2.manual_formatting.output_rna.h5ad"
 COMMON_GEX_ATAC = "data/official/common/openproblems_bmmc_multiome_phase1v2/openproblems_bmmc_multiome_phase1v2.manual_formatting.output_rna.h5ad"
 COMMON_ADT = "data/official/common/openproblems_bmmc_cite_phase1v2/openproblems_bmmc_cite_phase1v2.manual_formatting.output_mod2.h5ad"
