@@ -4,12 +4,12 @@ functionality:
 
   # metadata for your method
   version: dev
-  description: A description for your method.
+  description: Non Pre-trained Model
   authors:
     - name: Simon Steshin
       email: SteshinSimon@gmail.com
       roles: [ author, maintainer ]
-      props: { github: SteshinSS, orcid: "0000-1111-2222-3333" }
+      props: { github: SteshinSS, orcid: "0000-0002-4896-6379" }
     - name: Alina Paronyan
       email: Alina.Paronyan@skoltech.ru
       roles: [ author, maintainer ]
@@ -45,8 +45,6 @@ functionality:
       path: ../../lab_scripts
     - type: file
       path: ../../configs
-    - type: file
-      path: ../../checkpoints
   
   # resources for unit testing your component
   tests:
@@ -80,6 +78,7 @@ platforms:
           - pyyaml
           - pytorch-lightning
           - plotly
+          - scib
 
 
   # By specifying a 'nextflow', viash will also build a viash module

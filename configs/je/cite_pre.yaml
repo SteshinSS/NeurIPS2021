@@ -1,3 +1,5 @@
+# [s2d1, s2d4, s2d5]
+# [s3d1, s3d6, s3d7]
 data:
   task_type: cite_pre
   train_batches: [s1d1, s1d2, s1d3]

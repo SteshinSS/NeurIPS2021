@@ -10,7 +10,7 @@ import torch
 import yaml  # type: ignore
 from lab_scripts.data import dataloader
 from lab_scripts.mains.je import preprocessing
-from lab_scripts.mains.je.model import JEAutoencoder
+from lab_scripts.mains.je.model import JEAutoencoder, TargetCallback
 from lab_scripts.mains.je.preprocessing import (base_checkpoint_path,
                                                 base_config_path)
 from lab_scripts.utils import utils
@@ -34,14 +34,10 @@ def predict_submission(
     # Select data type
     task_type = utils.get_task_type(mod1, mod2)
     predictions = None
-    if task_type == "gex_to_atac":
-        # predictions = predict_gex_to_atac(...)
-        pass
-    elif task_type == "atac_to_gex":
-        # predictions = predict_atac_to_gex(...)
+    if task_type in ["gex_to_atac", "atac_to_gex"]:
         pass
     elif task_type in ["gex_to_adt", "adt_to_gex"]:
-        predictions = predict_cite(input_mod1, input_mod2, resources_dir)
+        predictions = train_cite(input_mod1, input_mod2, resources_dir)
     else:
         raise ValueError(f"Inappropriate dataset types: {task_type}")
 
@@ -56,68 +52,52 @@ def predict_submission(
     return result
 
 
-def predict_cite(input_mod1, input_mod2, resources_dir):
+def train_cite(input_mod1, input_mod2, resources_dir):
     config_path = resources_dir + base_config_path + "cite_pre" + ".yaml"
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
     data_config = config["data"]
     model_config = config["model"]
     dataset = {
-        "test_mod1": input_mod1,
-        "test_mod2": input_mod2,
+        "train_mod1": input_mod1,
+        "train_mod2": input_mod2,
     }
     preprocessed_data = preprocessing.preprocess_data(
-        data_config, dataset, model_config["batch_size"], is_train=False
+        data_config, dataset
     )
-    model_config = preprocessing.update_model_config(model_config, preprocessed_data)
-    checkpoint_path = (
-        resources_dir + base_checkpoint_path + data_config["task_type"] + ".ckpt"
+    model_config = preprocessing.update_model_config(config, preprocessed_data)
+    if data_config['batch_correct']:
+        train_dataloaders = [preprocessed_data["train_shuffled_dataloader"]]
+        train_dataloaders.extend(preprocessed_data["correction_dataloaders"])
+    else:
+        train_dataloaders = preprocessed_data["train_shuffled_dataloader"]
+    log.info("Data is preprocessed")
+
+
+    # Train model
+    model = JEAutoencoder(model_config)
+
+    trainer = pl.Trainer(
+        gpus=1,
+        max_epochs=5000,
+        logger=None,
+        callbacks=[],
+        deterministic=True,
+        checkpoint_callback=False,
+        gradient_clip_val=model_config["gradient_clip"] if not model_config['use_critic'] else 0.0,
     )
-    model = JEAutoencoder.load_from_checkpoint(checkpoint_path, config=model_config)
+
+    trainer.fit(model, train_dataloaders=train_dataloaders)
+
     model.eval()
     predictions = []  # type: ignore
     with torch.no_grad():
-        for i, batch in enumerate(preprocessed_data["test_dataloader"]):
+        for i, batch in enumerate(preprocessed_data["train_unshuffled_dataloader"]):
             first, second = batch
             predictions.append(model(first, second))
     predictions = torch.cat(predictions, dim=0)  # type: ignore
     return predictions.numpy()  # type: ignore
 
-
-def evaluate(config: dict):
-    # Load data
-    data_config = config["data"]
-    dataset = dataloader.load_custom_je_data(
-        data_config["task_type"],
-        data_config["train_batches"],
-        data_config["test_batches"],
-        val_size=0,
-    )
-    log.info("Data is loaded")
-
-    # Preprocess data
-    model_config = config["model"]
-    preprocessed_data = preprocessing.preprocess_data(
-        data_config, dataset, model_config["batch_size"], is_train=False
-    )
-    model_config = preprocessing.update_model_config(model_config, preprocessed_data)
-    log.info("Data is preprocessed")
-
-    # Load model
-    checkpoint_path = config.get(
-        "checkpoint_path", base_checkpoint_path + data_config["task_type"] + ".ckpt"
-    )
-    model = JEAutoencoder.load_from_checkpoint(checkpoint_path, config=model_config)
-    model.eval()
-    predictions = []  # type: ignore
-    with torch.no_grad():
-        for i, batch in enumerate(preprocessed_data["test_dataloader"]):
-            first, second = batch
-            predictions.append(model(first, second))
-    predictions = torch.cat(predictions, dim=0)  # type: ignore
-    prediction = je_metrics.create_anndata(dataset["test_solution"], predictions.numpy())  # type: ignore
-    all_metrics = je_metrics.calculate_metrics(prediction, dataset["test_solution"])
-    print(all_metrics)
 
 
 def get_logger(config):
@@ -160,9 +140,7 @@ def train(config: dict):
     data_config = config["data"]
     dataset = dataloader.load_custom_je_data(
         data_config["task_type"],
-        data_config["train_batches"],
-        data_config["test_batches"],
-        val_size=data_config["val_size"],
+        data_config["train_batches"]
     )
     log.info("Data is loaded")
 
@@ -198,13 +176,6 @@ def train(config: dict):
     )
     trainer.fit(model, train_dataloaders=train_dataloaders)
 
-    # Save model
-    checkpoint_path = config.get(
-        "checkpoint_path", base_checkpoint_path + data_config["task_type"] + ".ckpt"
-    )
-    trainer.save_checkpoint(checkpoint_path)
-    log.info(f"Model is saved to {checkpoint_path}")
-
 
 def get_parser():
     """Creates parser.
@@ -217,10 +188,6 @@ def get_parser():
     parser_train = subparsers.add_parser("train")
     parser_train.add_argument("config", type=argparse.FileType("r"))
     parser_train.add_argument("--wandb", action="store_true", default=False)
-    parser_evaluate = subparsers.add_parser("evaluate")
-    parser_evaluate.add_argument("config", type=argparse.FileType("r"))
-    parser_tune = subparsers.add_parser("tune")
-    parser_tune.add_argument("config", type=argparse.FileType("r"))
     return parser
 
 
@@ -235,12 +202,6 @@ def cli():
     if args.action == "train":
         config["wandb"] = args.wandb
         train(config)
-    elif args.action == "evaluate":
-        evaluate(config)
-    elif args.action == "tune":
-        from lab_scripts.mains.je import tune
-
-        tune.tune_hp(config)
     else:
         print("Enter command [train, evaluate, tune]")
 
@@ -248,7 +209,4 @@ def cli():
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     utils.set_deafult_seed()
-    from lab_scripts.mains.je.callback import TargetCallback
-    from lab_scripts.metrics import je as je_metrics
-
     cli()

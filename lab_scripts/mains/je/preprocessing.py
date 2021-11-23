@@ -51,7 +51,6 @@ def save_processor(processor, config, task_type):
 def train_processor(mod_config: dict, dataset, task_type: str):
     processor = get_processor(mod_config)
     processor.fit(dataset)
-    save_processor(processor, mod_config, task_type)
     return processor
 
 
@@ -103,16 +102,6 @@ def add_train_dataloaders(result, dataset, first_processor, second_processor, ba
         pin_memory=True,
         num_workers=1,
     )
-
-    small_idx = np.arange(first_X.shape[0])
-    np.random.shuffle(small_idx)
-    small_idx = small_idx[:512]
-    small_dataset = TwoOmicsDataset(first_X[small_idx], second_X[small_idx])
-    result["small_train_dataloader"] = DataLoader(
-        small_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-    )
     return result
 
 
@@ -135,6 +124,7 @@ def preprocess_data(config: dict, dataset, resources_dir=None):
         base_config_path = resources_dir + base_config_path
         global base_checkpoint_path
         base_checkpoint_path = resources_dir + base_checkpoint_path
+
     first_processor = train_processor(
         config["mod1"], dataset["train_mod1"], config["task_type"]
     )

@@ -16,18 +16,22 @@ from scib.metrics.clustering import opt_louvain
 log = logging.getLogger("je")
 
 
-def correct_cell_cycle(embeddings: np.ndarray, input_data: ad.AnnData):
+def correct_cell_cycle(embeddings: np.ndarray, input_data: ad.AnnData, fast=True):
     scib.preprocessing.score_cell_cycle(input_data, organism='human')
     dataset_batches = input_data.obs["batch"].astype("string")
     unique_batches = dataset_batches.unique()
     for batch in unique_batches:
         print('Correcting', batch, '...')
         batch_idx = (dataset_batches == batch).to_list()
-        embeddings[batch_idx] = correct_one_batch(embeddings[batch_idx], input_data[batch_idx])
+        if fast:
+            embeddings[batch_idx] = correct_one_batch_fast(embeddings[batch_idx], input_data[batch_idx])
+        else:
+            embeddings[batch_idx] = correct_one_batch_slow(embeddings[batch_idx], input_data[batch_idx])
+
     return embeddings
 
 
-def correct_one_batch(embeddings: np.ndarray, input_data: ad.AnnData):
+def correct_one_batch_slow(embeddings: np.ndarray, input_data: ad.AnnData):
     g2m_cycle = input_data.obs['G2M_score'].to_numpy()
     s_cycle = input_data.obs['S_score'].to_numpy()
     best_cc_score = -1
@@ -41,6 +45,45 @@ def correct_one_batch(embeddings: np.ndarray, input_data: ad.AnnData):
             best_cc_score = cc_score
             best_embeddings = corrected_embeddings
     return best_embeddings
+
+
+
+def correct_one_batch_fast(embeddings: np.ndarray, input_data: ad.AnnData):
+    g2m_cycle = input_data.obs['G2M_score'].to_numpy()
+    s_cycle = input_data.obs['S_score'].to_numpy()
+
+    corrected_embeddings = embeddings * (1 + 0.1 * g2m_cycle[:, None] + 0.1 * s_cycle[:, None])
+    anndata = create_anndata(input_data, corrected_embeddings)
+    score = cell_cycle(
+        adata_pre=input_data,
+        adata_post=anndata,
+        batch_key="batch",
+        embed="X_emb",
+        recompute_cc=False,
+        organism="human",
+        agg_func=None
+    )
+    target = score['before'][0]
+    score_a = score['after'][0]
+
+    corrected_embeddings = embeddings * (1 + 0.9 * g2m_cycle[:, None] + 0.9 * s_cycle[:, None])
+    anndata = create_anndata(input_data, corrected_embeddings)
+    score = cell_cycle(
+        adata_pre=input_data,
+        adata_post=anndata,
+        batch_key="batch",
+        embed="X_emb",
+        recompute_cc=False,
+        organism="human",
+        agg_func=None
+    )
+    score_b = score['after'][0]
+
+    k = (score_b - score_a) / 0.8
+    m = score_a - k * 0.1
+    coef = (target - m) / k
+    print('Best coef:', coef)
+    return embeddings * (1 + coef * g2m_cycle[:, None] + coef * s_cycle[:, None])
     
 
 

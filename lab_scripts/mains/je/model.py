@@ -2,7 +2,9 @@ from collections import OrderedDict
 
 import pytorch_lightning as pl
 import torch
+import anndata as ad
 from lab_scripts.models.common import losses, plugins
+from lab_scripts.metrics import je as metrics
 from torch import nn
 from torch.nn import functional as F
 
@@ -80,7 +82,7 @@ def construct_net(dims, activation_name: str):
                 nn.Linear(dims[i], dims[i + 1]),
             )
         )
-        net.append((f"{i}_Actiavtion", activation))
+        net.append((f"{i}_Activation", activation))
     return nn.Sequential(OrderedDict(net))
 
 
@@ -315,3 +317,32 @@ class JEAutoencoder(pl.LightningModule):
         critic_optimizer = torch.optim.Adam(self.critic_parameters, lr=self.critic_lr)
         optimizers.append({"optimizer": critic_optimizer})
         return optimizers
+
+
+
+class TargetCallback(pl.Callback):
+    def __init__(self, solution: ad.AnnData, dataset, frequency: int):
+        self.solution = solution
+        self.dataset = dataset
+        self.frequency = frequency
+        self.current_epoch = 0
+
+    def on_train_epoch_end(self, trainer, pl_module):
+        logger = trainer.logger
+        if not logger:
+            return
+        self.current_epoch += 1
+        if self.current_epoch % self.frequency != 0:
+            return
+        pl_module.eval()
+        embeddings = []
+        device = pl_module.device
+        with torch.no_grad():
+            for i, batch in enumerate(self.dataset):
+                first, second = batch
+                embeddings.append(pl_module(first.to(device), second.to(device)).cpu())
+        embeddings = torch.cat(embeddings, dim=0).numpy()
+        embeddings = metrics.correct_cell_cycle(embeddings, self.solution)
+        prediction = metrics.create_anndata(self.solution, embeddings)
+        all_metrics = metrics.calculate_metrics(prediction, self.solution)
+        logger.experiment.log(all_metrics)
