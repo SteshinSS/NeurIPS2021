@@ -342,7 +342,7 @@ class TargetCallback(pl.Callback):
                 first, second = batch
                 embeddings.append(pl_module(first.to(device), second.to(device)).cpu())
         embeddings = torch.cat(embeddings, dim=0).numpy()
-        embeddings = metrics.correct_cell_cycle(embeddings, self.solution)
+        # embeddings = metrics.correct_cell_cycle(embeddings, self.solution)
         prediction = metrics.create_anndata(self.solution, embeddings)
         all_metrics = metrics.calculate_metrics(prediction, self.solution)
         logger.experiment.log(all_metrics)

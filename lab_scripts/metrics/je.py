@@ -171,8 +171,8 @@ def calculate_metrics(data: ad.AnnData, solution: ad.AnnData):
     log.info('Calculating nmi...')
     result['nmi'] = calculate_nmi(data)
 
-    log.info('Calculating cc_cons...')
-    result['cc_cons'] = cc_cons(data, solution)
+    #log.info('Calculating cc_cons...')
+    #result['cc_cons'] = cc_cons(data, solution)
 
     log.info('Calculating ti_cons...')
     result['ti_cons'] = ti_cons(data, solution)
@@ -183,5 +183,6 @@ def calculate_metrics(data: ad.AnnData, solution: ad.AnnData):
     total_sum = 0.0
     for key, value in result.items():
         total_sum += value
-    result['average'] = total_sum / 6
+    #result['average'] = total_sum / 6
+    result['average'] = total_sum / 5
     return result
